@@ -27,10 +27,6 @@ package io.jenkins.plugins.kubevirt;
 import hudson.plugins.sshslaves.SSHLauncher;
 import hudson.plugins.sshslaves.verifiers.NonVerifyingKeyVerificationStrategy;
 import hudson.slaves.ComputerLauncher;
-import io.jenkins.plugins.kubevirt.internal.KubeVirt;
-
-import java.util.logging.Level;
-import java.util.logging.Logger;
 
 /**
  * Factory for creating SSH launchers for KubeVirt agents.
@@ -38,24 +34,21 @@ import java.util.logging.Logger;
  */
 public class KubeVirtLauncherFactory {
 
-    private static final Logger LOGGER = Logger.getLogger(KubeVirtLauncherFactory.class.getName());
-
     /**
      * Creates the appropriate launcher based on the template configuration.
      *
      * @param template   The VM template configuration
      * @param vmName     The name of the VM
      * @param ip         The IP address of the VM (used for direct SSH)
-     * @param virt       The KubeVirt client (used to get token for virtctl)
      * @param config     The cloud configuration
      * @param callback   The provisioning callback for logging
      * @return A configured ComputerLauncher instance
      */
     public ComputerLauncher createLauncher(KubeVirtTemplate template, String vmName, String ip,
-                                            KubeVirt virt, KubeVirtCloudConfig config,
+                                            KubeVirtCloudConfig config,
                                             ProvisioningCallback callback) {
         if (template.isVirtctlSsh()) {
-            return createVirtctlLauncher(template, vmName, virt, config, callback);
+            return createVirtctlLauncher(template, vmName, config, callback);
         } else {
             return createDirectSshLauncher(template, ip, callback);
         }
@@ -96,29 +89,19 @@ public class KubeVirtLauncherFactory {
      *
      * @param template The VM template configuration
      * @param vmName   The name of the VM
-     * @param virt     The KubeVirt client to get the Kubernetes token
      * @param config   The cloud configuration
      * @param callback The provisioning callback for logging
      * @return A configured VirtctlPortForwardLauncher instance
      */
     public ComputerLauncher createVirtctlLauncher(KubeVirtTemplate template, String vmName,
-                                                   KubeVirt virt, KubeVirtCloudConfig config,
+                                                   KubeVirtCloudConfig config,
                                                    ProvisioningCallback callback) {
         callback.log("Configuring virtctl SSH tunnel (via Kubernetes API) to VM: " + vmName);
         callback.log("Note: SSH will be tunneled through the Kubernetes API server - no direct network access needed");
 
-        // Reuse the token from the Kubernetes client
-        String k8sToken = virt.getClient().getConfiguration().getOauthToken();
-        if (k8sToken == null || k8sToken.isEmpty()) {
-            callback.log("WARNING: Kubernetes token is empty - port-forward may fail");
-            LOGGER.log(Level.WARNING, "Kubernetes token is empty for virtctl port-forward launcher");
-        } else {
-            callback.log("Kubernetes token obtained successfully for port-forward (token length: " + k8sToken.length() + ")");
-        }
-
         VirtctlPortForwardLauncher launcher = new VirtctlPortForwardLauncher(
                 config.getServerUrl(),
-                k8sToken,
+                config.getCloudName(),
                 config.getNamespace(),
                 config.isIgnoreSsl(),
                 vmName,

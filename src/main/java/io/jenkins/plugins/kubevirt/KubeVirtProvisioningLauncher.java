@@ -107,7 +107,7 @@ public class KubeVirtProvisioningLauncher extends ComputerLauncher {
         }
 
         if (launched && delegate != null) {
-            LOGGER.log(Level.INFO, "Agent already launched, re-delegating: {0}", agent.getNodeName());
+            LOGGER.log(Level.FINE, "Agent already launched, re-delegating: {0}", agent.getNodeName());
             delegate.launch(computer, listener);
             return;
         }
@@ -131,7 +131,7 @@ public class KubeVirtProvisioningLauncher extends ComputerLauncher {
         // Create a callback that writes to both the computer log (TaskListener)
         // and captures text for the build console (provisioningInfo)
         ProvisioningCallback callback = message -> {
-            LOGGER.log(Level.INFO, "[{0}] {1}", new Object[]{nodeName, message});
+            LOGGER.log(Level.FINE, "[{0}] {1}", new Object[]{nodeName, message});
             KubeVirtLog.log(log, message);
             provisioningLog.append(message).append("\n");
         };
@@ -168,7 +168,7 @@ public class KubeVirtProvisioningLauncher extends ComputerLauncher {
             validateSshCredentials(template, nodeName, callback);
 
             // Phase 4: Create real launcher and delegate
-            delegate = launcherFactory.createLauncher(template, nodeName, ip, virt, config, callback);
+            delegate = launcherFactory.createLauncher(template, nodeName, ip, config, callback);
 
             // Log retention policy
             logRetentionPolicy(template, callback);
@@ -612,7 +612,7 @@ public class KubeVirtProvisioningLauncher extends ComputerLauncher {
      */
     private void terminateAgent(KubeVirtAgent agent, KubeVirtAgent.TerminationReason reason) {
         try {
-            LOGGER.log(Level.INFO, "Terminating agent {0} due to {1}", new Object[]{agent.getNodeName(), reason});
+            LOGGER.log(Level.FINE, "Terminating agent {0} due to {1}", new Object[]{agent.getNodeName(), reason});
             agent.setTerminationReason(reason);
             agent.terminate();
         } catch (IOException | InterruptedException e) {

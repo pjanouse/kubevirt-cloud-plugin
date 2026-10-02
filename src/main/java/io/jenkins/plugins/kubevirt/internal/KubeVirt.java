@@ -214,7 +214,7 @@ public class KubeVirt implements AutoCloseable {
             String diskSize, String accessMode, ProvisioningCallback callback) {
         callback.log("Creating DataSource: " + dataSourceName + " in namespace: " + dataSourceNamespace);
         callback.log("Source image: " + imageUrl);
-        LOGGER.log(Level.INFO, "Creating DataSource {0} in namespace {1} from image {2}",
+        LOGGER.log(Level.FINE, "Creating DataSource {0} in namespace {1} from image {2}",
                 new Object[] { dataSourceName, dataSourceNamespace, imageUrl });
 
         // Ensure the URL has the docker:// prefix, but avoid duplication
@@ -264,13 +264,13 @@ public class KubeVirt implements AutoCloseable {
                             .resource(dv)
                             .create());
             callback.log("DataVolume created. Waiting for import to complete...");
-            LOGGER.log(Level.INFO, "DataVolume {0} created for DataSource import", dvName);
+            LOGGER.log(Level.FINE, "DataVolume {0} created for DataSource import", dvName);
         } catch (KubernetesClientException e) {
             if (e.getCode() == 409
                     && !KubernetesClientExceptions.isResourceQuotaUpdateConflict(e.getCode(), e.getMessage())) {
                 // Another thread or controller is already importing this image
                 callback.log("DataVolume already exists (concurrent import detected). Waiting for it to complete...");
-                LOGGER.log(Level.INFO, "DataVolume {0} already exists, joining existing import", dvName);
+                LOGGER.log(Level.FINE, "DataVolume {0} already exists, joining existing import", dvName);
             } else {
                 throw e;
             }
@@ -343,12 +343,12 @@ public class KubeVirt implements AutoCloseable {
                                 .resource(ds)
                                 .create());
                 callback.log("DataSource created successfully. Waiting for it to become ready...");
-                LOGGER.log(Level.INFO, "DataSource {0} created successfully", dataSourceName);
+                LOGGER.log(Level.FINE, "DataSource {0} created successfully", dataSourceName);
             } catch (KubernetesClientException e) {
                 if (e.getCode() == 409
                         && !KubernetesClientExceptions.isResourceQuotaUpdateConflict(e.getCode(), e.getMessage())) {
                     callback.log("DataSource already exists (concurrent creation). Will wait for it to become ready...");
-                    LOGGER.log(Level.INFO, "DataSource {0} already exists, skipping creation", dataSourceName);
+                    LOGGER.log(Level.FINE, "DataSource {0} already exists, skipping creation", dataSourceName);
                 } else {
                     throw e;
                 }
@@ -466,7 +466,7 @@ public class KubeVirt implements AutoCloseable {
         if (injectTmpDiskConfig) {
             callback.log("Ephemeral /tmp disk injection enabled");
         }
-        LOGGER.log(Level.INFO, "Creating VirtualMachine with ContainerDisk: {0} in namespace: {1}", new Object[]{name, namespace});
+        LOGGER.log(Level.FINE, "Creating VirtualMachine with ContainerDisk: {0} in namespace: {1}", new Object[]{name, namespace});
 
         String diskName = name + "-disk";
         Map<String, Object> spec = buildBaseVMSpec(name, cpu, memory, cpuLimit, memoryLimit, userData, "rootdisk", injectTmpDiskConfig);
@@ -532,7 +532,7 @@ public class KubeVirt implements AutoCloseable {
         if (injectTmpDiskConfig) {
             callback.log("Ephemeral /tmp disk injection enabled");
         }
-        LOGGER.log(Level.INFO, "Creating VirtualMachine from DataSource: {0} in namespace: {1}", new Object[]{name, namespace});
+        LOGGER.log(Level.FINE, "Creating VirtualMachine from DataSource: {0} in namespace: {1}", new Object[]{name, namespace});
 
         String diskName = name + "-disk";
         Map<String, Object> spec = buildBaseVMSpec(name, cpu, memory, cpuLimit, memoryLimit, userData, "rootdisk", injectTmpDiskConfig);
@@ -603,7 +603,7 @@ public class KubeVirt implements AutoCloseable {
         if (injectTmpDiskConfig) {
             callback.log("Ephemeral /tmp disk injection enabled");
         }
-        LOGGER.log(Level.INFO, "Creating VirtualMachine with DataSource Import: {0} in namespace: {1}", new Object[]{name, namespace});
+        LOGGER.log(Level.FINE, "Creating VirtualMachine with DataSource Import: {0} in namespace: {1}", new Object[]{name, namespace});
 
         callback.log("Using DataSource caching for image: " + image);
         callback.log("DataSource name: " + dataSourceName + " in namespace: " + dataSourceNamespace);
@@ -794,7 +794,7 @@ public class KubeVirt implements AutoCloseable {
      */
     private String createCloudInitSecret(String vmName, String userData, ProvisioningCallback callback) {
         String secretName = vmName + CLOUDINIT_SECRET_SUFFIX;
-        LOGGER.log(Level.INFO, "Creating cloud-init Secret: {0} in namespace: {1}", new Object[]{secretName, namespace});
+        LOGGER.log(Level.FINE, "Creating cloud-init Secret: {0} in namespace: {1}", new Object[]{secretName, namespace});
 
         Secret secret = new SecretBuilder()
                 .withNewMetadata()
@@ -825,7 +825,7 @@ public class KubeVirt implements AutoCloseable {
         String secretName = vmName + CLOUDINIT_SECRET_SUFFIX;
         try {
             client.secrets().inNamespace(namespace).withName(secretName).delete();
-            LOGGER.log(Level.INFO, "Deleted cloud-init Secret: {0}", secretName);
+            LOGGER.log(Level.FINE, "Deleted cloud-init Secret: {0}", secretName);
         } catch (Exception e) {
             LOGGER.log(Level.FINE, "Cloud-init secret not found or already deleted: " + secretName, e);
         }
@@ -863,7 +863,7 @@ public class KubeVirt implements AutoCloseable {
 
             secret.getMetadata().setOwnerReferences(List.of(ownerRef));
             client.secrets().inNamespace(namespace).resource(secret).update();
-            LOGGER.log(Level.INFO, "Set ownerReference on Secret {0} -> VM {1} (uid={2})",
+            LOGGER.log(Level.FINE, "Set ownerReference on Secret {0} -> VM {1} (uid={2})",
                     new Object[]{secretName, vmName, vmUid});
         } catch (Exception e) {
             LOGGER.log(Level.WARNING, "Failed to set ownerReference on Secret " + secretName +
@@ -1109,7 +1109,7 @@ public class KubeVirt implements AutoCloseable {
                         "WARNING: Unable to create %s because of a transient resource quota update conflict.%n%s%nRetrying...%n",
                         resourceDescription,
                         e.getMessage()));
-                LOGGER.log(Level.INFO, "Resource quota update conflict creating {0}, attempt {1}/{2}",
+                LOGGER.log(Level.FINE, "Resource quota update conflict creating {0}, attempt {1}/{2}",
                         new Object[]{resourceDescription, attempt, maxAttempts});
                 try {
                     Thread.sleep(intervalSeconds * 1000L);
@@ -1219,13 +1219,13 @@ public class KubeVirt implements AutoCloseable {
                             .create());
 
             callback.log("VM resource created successfully in namespace: " + namespace);
-            LOGGER.log(Level.INFO, "VirtualMachine {0} created successfully", name);
+            LOGGER.log(Level.FINE, "VirtualMachine {0} created successfully", name);
             return created.getMetadata().getUid();
         } catch (KubernetesClientException e) {
             if (e.getCode() == 409
                     && !KubernetesClientExceptions.isResourceQuotaUpdateConflict(e.getCode(), e.getMessage())) {
                 callback.log("VM already exists (likely from a previous provisioning attempt). Verifying ownership...");
-                LOGGER.log(Level.INFO, "VirtualMachine {0} already exists, verifying ownership", name);
+                LOGGER.log(Level.FINE, "VirtualMachine {0} already exists, verifying ownership", name);
 
                 validateVMOwnership(name, cloudName, templateName);
 
@@ -1238,7 +1238,7 @@ public class KubeVirt implements AutoCloseable {
                 }
 
                 callback.log("VM already exists and belongs to this controller. Reusing existing VM.");
-                LOGGER.log(Level.INFO, "VirtualMachine {0} ownership verified, reusing", name);
+                LOGGER.log(Level.FINE, "VirtualMachine {0} ownership verified, reusing", name);
                 return existing.getMetadata().getUid();
             }
             throw e;
@@ -1450,7 +1450,7 @@ public class KubeVirt implements AutoCloseable {
      * @throws IllegalStateException if the VM doesn't belong to this instance
      */
     public void deleteVM(String name, String cloudName, String templateName) {
-        LOGGER.log(Level.INFO, "Deleting VirtualMachine: {0} in namespace: {1}", new Object[]{name, namespace});
+        LOGGER.log(Level.FINE, "Deleting VirtualMachine: {0} in namespace: {1}", new Object[]{name, namespace});
 
         validateVMOwnership(name, cloudName, templateName);
 
@@ -1462,7 +1462,7 @@ public class KubeVirt implements AutoCloseable {
                 .withName(name)
                 .delete();
 
-        LOGGER.log(Level.INFO, "VirtualMachine {0} deleted", name);
+        LOGGER.log(Level.FINE, "VirtualMachine {0} deleted", name);
     }
 
     /**
@@ -1846,11 +1846,11 @@ public class KubeVirt implements AutoCloseable {
         StringBuilder result = new StringBuilder();
 
         // Step 1: Test basic cluster connectivity
-        LOGGER.log(Level.INFO, "Testing connection to Kubernetes cluster at: {0}", client.getMasterUrl());
+        LOGGER.log(Level.FINE, "Testing connection to Kubernetes cluster at: {0}", client.getMasterUrl());
         try {
             String serverVersion = client.getKubernetesVersion().getGitVersion();
             result.append("Cluster version: ").append(serverVersion).append("\n");
-            LOGGER.log(Level.INFO, "Successfully connected to cluster. Version: {0}", serverVersion);
+            LOGGER.log(Level.FINE, "Successfully connected to cluster. Version: {0}", serverVersion);
         } catch (Exception e) {
             String msg = "Failed to connect to Kubernetes cluster: " + e.getMessage();
             LOGGER.log(Level.SEVERE, msg, e);
@@ -1858,7 +1858,7 @@ public class KubeVirt implements AutoCloseable {
         }
 
         // Step 2: Test namespace access
-        LOGGER.log(Level.INFO, "Testing access to namespace: {0}", namespace);
+        LOGGER.log(Level.FINE, "Testing access to namespace: {0}", namespace);
         try {
             var ns = client.namespaces().withName(namespace).get();
             if (ns == null) {
@@ -1867,7 +1867,7 @@ public class KubeVirt implements AutoCloseable {
                 throw new Exception(msg);
             }
             result.append("Namespace '").append(namespace).append("' is accessible\n");
-            LOGGER.log(Level.INFO, "Namespace {0} is accessible", namespace);
+            LOGGER.log(Level.FINE, "Namespace {0} is accessible", namespace);
         } catch (io.fabric8.kubernetes.client.KubernetesClientException e) {
             String msg = "Failed to access namespace '" + namespace + "': " + e.getMessage();
             LOGGER.log(Level.SEVERE, msg, e);
@@ -1875,14 +1875,14 @@ public class KubeVirt implements AutoCloseable {
         }
 
         // Step 3: Test KubeVirt API access (list VMs in namespace)
-        LOGGER.log(Level.INFO, "Testing KubeVirt API access in namespace: {0}", namespace);
+        LOGGER.log(Level.FINE, "Testing KubeVirt API access in namespace: {0}", namespace);
         try {
             var vms = client.genericKubernetesResources(VM_CONTEXT)
                     .inNamespace(namespace)
                     .list();
             int vmCount = vms.getItems().size();
             result.append("KubeVirt API accessible. Found ").append(vmCount).append(" VirtualMachine(s) in namespace\n");
-            LOGGER.log(Level.INFO, "KubeVirt API accessible. Found {0} VMs in namespace {1}", new Object[]{vmCount, namespace});
+            LOGGER.log(Level.FINE, "KubeVirt API accessible. Found {0} VMs in namespace {1}", new Object[]{vmCount, namespace});
         } catch (io.fabric8.kubernetes.client.KubernetesClientException e) {
             String msg = "Failed to access KubeVirt API. Ensure KubeVirt or OpenShift Virtualization is installed and you have permissions to list VirtualMachines: " + e.getMessage();
             LOGGER.log(Level.SEVERE, msg, e);

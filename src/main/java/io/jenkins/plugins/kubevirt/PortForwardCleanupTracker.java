@@ -99,7 +99,7 @@ public class PortForwardCleanupTracker {
             if (tunnel != null) {
                 try {
                     tunnel.close();
-                    LOGGER.log(Level.INFO, "Closed orphaned WebSocket tunnel for VM: {0}", vmName);
+                    LOGGER.log(Level.FINE, "Closed orphaned WebSocket tunnel for VM: {0}", vmName);
                 } catch (Exception e) {
                     LOGGER.log(Level.WARNING, "Error closing WebSocket tunnel for " + vmName, e);
                 }
@@ -178,7 +178,7 @@ public class PortForwardCleanupTracker {
             PortForwardResources resources = entry.getValue();
 
             if (!resources.isLauncherAlive()) {
-                LOGGER.log(Level.INFO, "Found orphaned tunnel resources for VM: {0} (launcher GC'd), cleaning up",
+                LOGGER.log(Level.FINE, "Found orphaned tunnel resources for VM: {0} (launcher GC'd), cleaning up",
                         entry.getKey());
                 resources.close();
                 iterator.remove();
@@ -187,7 +187,7 @@ public class PortForwardCleanupTracker {
         }
 
         if (cleanedCount > 0) {
-            LOGGER.log(Level.INFO, "Cleaned up {0} orphaned tunnel resource(s)", cleanedCount);
+            LOGGER.log(Level.FINE, "Cleaned up {0} orphaned tunnel resource(s)", cleanedCount);
         }
 
         return cleanedCount;
@@ -203,7 +203,7 @@ public class PortForwardCleanupTracker {
             return;
         }
 
-        LOGGER.log(Level.INFO, "Cleaning up {0} active tunnel resource(s) during shutdown", count);
+        LOGGER.log(Level.FINE, "Cleaning up {0} active tunnel resource(s) during shutdown", count);
 
         for (Map.Entry<String, PortForwardResources> entry : activeResources.entrySet()) {
             try {
@@ -214,7 +214,7 @@ public class PortForwardCleanupTracker {
         }
 
         activeResources.clear();
-        LOGGER.log(Level.INFO, "Tunnel cleanup completed");
+        LOGGER.log(Level.FINE, "Tunnel cleanup completed");
     }
 
     /**
@@ -244,7 +244,7 @@ public class PortForwardCleanupTracker {
      */
     @Terminator
     public static void onShutdown() {
-        LOGGER.log(Level.INFO, "Jenkins shutdown detected, cleaning up tunnel resources");
+        LOGGER.log(Level.FINE, "Jenkins shutdown detected, cleaning up tunnel resources");
         cleanupAll();
     }
 }

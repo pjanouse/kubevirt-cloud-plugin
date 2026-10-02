@@ -148,7 +148,7 @@ public final class SshAuthHelper {
                 KubeVirtLog.log(log, "Cloud-init may still be setting up authorized_keys.");
                 KubeVirtLog.log(log, "Retrying in " + interval + " seconds...");
                 KubeVirtLog.log(log, "──────────────────────────────────────────────────────────");
-                LOGGER.log(Level.INFO, "[{0}] SSH auth failed (attempt {1}/{2}), "
+                LOGGER.log(Level.FINE, "[{0}] SSH auth failed (attempt {1}/{2}), "
                                 + "retrying in {3}s — cloud-init may still be running",
                         new Object[]{nodeName, attempt, maxAttempts, interval});
                 Thread.sleep(interval * 1000L);

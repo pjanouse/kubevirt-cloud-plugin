@@ -201,7 +201,7 @@ public class OrphanedVMCleanupPeriodicWork extends AsyncPeriodicWork {
             // VM is orphaned - delete it
             KubeVirtLog.log(listener.getLogger(), "Found orphaned VM: " + vmName +
                     " (no registered agent, older than " + gracePeriodMinutes + " minutes)");
-            LOGGER.log(Level.INFO, "Deleting orphaned VM ''{0}'' from cloud ''{1}''",
+            LOGGER.log(Level.FINE, "Deleting orphaned VM ''{0}'' from cloud ''{1}''",
                     new Object[]{vmName, cloud.name});
 
             try {

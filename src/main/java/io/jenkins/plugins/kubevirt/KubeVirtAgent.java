@@ -40,6 +40,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.jenkinsci.plugins.cloudstats.ProvisioningActivity;
 import org.jenkinsci.plugins.cloudstats.TrackedItem;
+import org.jenkinsci.plugins.durabletask.executors.OnceRetentionStrategy;
 
 /**
  * Jenkins agent running on a KubeVirt virtual machine.
@@ -54,9 +55,9 @@ public class KubeVirtAgent extends AbstractCloudSlave implements TrackedItem {
      * Reasons why a KubeVirt agent can be terminated.
      */
     public enum TerminationReason {
-        /** Agent was idle for too long (CloudRetentionStrategy) */
+        /** Agent was idle for too long ({@link CloudRetentionStrategy}) */
         IDLE_TIMEOUT,
-        /** Single-use agent completed its build */
+        /** Single-use agent completed its build ({@link OnceRetentionStrategy}) */
         SINGLE_USE_COMPLETED,
         /** User deleted the agent from the Jenkins UI */
         USER_DELETED,
@@ -123,7 +124,7 @@ public class KubeVirtAgent extends AbstractCloudSlave implements TrackedItem {
         String retentionDesc = this.idleMinutes == 0 
                 ? "single-use (disposed after first build)" 
                 : this.idleMinutes + " minute idle termination";
-        LOGGER.log(Level.INFO, "Created agent {0} with labels ''{1}'' and {2}", 
+        LOGGER.log(Level.FINE, "Created agent {0} with labels ''{1}'' and {2}",
                 new Object[]{name, labelString, retentionDesc});
     }
     
@@ -135,13 +136,11 @@ public class KubeVirtAgent extends AbstractCloudSlave implements TrackedItem {
      */
     private static RetentionStrategy<?> createRetentionStrategy(int idleMinutes) {
         if (idleMinutes == 0) {
-            // For single-use agents, use CloudRetentionStrategy with 1 minute
-            // The RunListener will mark the agent for termination immediately after the build
-            return new CloudRetentionStrategy(1);
-        } else {
-            // CloudRetentionStrategy terminates after being idle for the specified minutes
-            return new CloudRetentionStrategy(idleMinutes);
+            // Terminate after one build (works for freestyle and Pipeline agents).
+            // Backup idle timeout if executor completion is missed.
+            return new OnceRetentionStrategy(1);
         }
+        return new CloudRetentionStrategy(idleMinutes);
     }
     
     /**
@@ -304,7 +303,7 @@ public class KubeVirtAgent extends AbstractCloudSlave implements TrackedItem {
         TerminationReason reason = getTerminationReason();
         String reasonDescription = getTerminationDescription(reason);
         
-        LOGGER.log(Level.INFO, "Agent {0} terminating ({1}). VM will be deleted.", 
+        LOGGER.log(Level.FINE, "Agent {0} terminating ({1}). VM will be deleted.",
                 new Object[]{getNodeName(), reasonDescription});
         KubeVirtLog.log(listener.getLogger(), "Terminating VM: " + getNodeName() + 
                 " (" + reasonDescription + ")");

@@ -22,7 +22,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 -->
 <?jelly escape-by-default='true'?>
-<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form">
+<j:jelly xmlns:j="jelly:core" xmlns:st="jelly:stapler" xmlns:d="jelly:define" xmlns:l="/lib/layout" xmlns:t="/lib/hudson" xmlns:f="/lib/form" xmlns:c="/lib/credentials">
     <!-- Hidden ID field to preserve template identity during edits -->
     <f:invisibleEntry>
         <input type="hidden" name="_.id" value="${instance.id}"/>
@@ -35,13 +35,13 @@ THE SOFTWARE.
         <f:textbox />
     </f:entry>
 
-    <f:entry title="Disk Source Type" field="diskSourceType"
-             description="ContainerDisk: imports a container disk image directly into a DataVolume for each VM. DataSource (Clone): clones from a pre-existing DataSource in the cluster. DataSource (Import): imports a container image into a DataSource (cached), then clones from it for each VM — faster provisioning after the first import.">
-        <f:select />
-    </f:entry>
-
-    <!-- Disk source fields — all inside one bordered container -->
-    <div class="disk-source-options">
+    <!-- Disk source type and dependent fields (visibility toggled via config.js adjunct) -->
+    <div class="disk-source-options"
+         data-disk-source="${empty(instance.diskSourceType) ? 'containerDisk' : instance.diskSourceType}">
+        <f:entry title="Disk Source Type" field="diskSourceType"
+                 description="ContainerDisk: imports a container disk image directly into a DataVolume for each VM. DataSource (Clone): clones from a pre-existing DataSource in the cluster. DataSource (Import): imports a container image into a DataSource (cached), then clones from it for each VM — faster provisioning after the first import.">
+            <f:select />
+        </f:entry>
         <!-- DataSource Namespace + Name: shown for dataSource and dataSourceImport -->
         <div class="data-source-fields">
             <f:entry title="DataSource Namespace" field="dataSourceNamespace"
@@ -70,29 +70,6 @@ THE SOFTWARE.
              description="RWX enables live migration but requires compatible storage. Use RWO if your storage doesn't support RWX.">
         <f:select />
     </f:entry>
-
-    <style>
-        .disk-source-options {
-            margin-left: 30px;
-            padding-left: 15px;
-            border-left: 2px solid #ccc;
-        }
-        .resource-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-        .resource-column {
-            padding: 10px;
-            background: #f8f9fa;
-            border-radius: 4px;
-        }
-        .resource-column h4 {
-            margin: 0 0 10px 0;
-            color: #555;
-            font-size: 13px;
-        }
-    </style>
 
     <f:section title="Resources">
         <f:description>
@@ -131,7 +108,7 @@ THE SOFTWARE.
         </f:entry>
         <f:entry title="Cloud-Init Wait (seconds)" field="cloudInitWaitSeconds"
                  description="Maximum time to wait for cloud-init to finish SSH setup before connecting (virtctl SSH only). Increase if cloud-init installs packages or runs long runcmd scripts.">
-            <f:textbox default="${descriptor.defaultCloudInitWaitSeconds}" />
+            <f:number default="${descriptor.defaultCloudInitWaitSeconds}" min="1" />
         </f:entry>
     </f:section>
     
@@ -142,11 +119,11 @@ THE SOFTWARE.
         </f:entry>
         <f:entry title="SSH Credentials" field="sshCredentialsId" 
                  description="SSH credentials (username/password or SSH key) to connect to the VM">
-            <f:select />
+            <c:select />
         </f:entry>
         <f:entry title="SSH Port" field="sshPort"
                  description="SSH port on the VM (used for Direct SSH only, virtctl always uses port 22)">
-            <f:textbox default="${descriptor.defaultSshPort}" />
+            <f:number default="${descriptor.defaultSshPort}" min="1" max="65535" />
         </f:entry>
         <f:entry title="Remote FS Root" field="remoteFS" 
                  description="Directory on the VM where Jenkins agent will run">
@@ -160,100 +137,28 @@ THE SOFTWARE.
     
     <f:section title="Agent Retention">
         <f:entry title="Instance Cap" field="instanceCap">
-            <f:textbox default="${descriptor.defaultInstanceCap}" />
+            <f:number default="${descriptor.defaultInstanceCap}" min="0" />
         </f:entry>
         <f:entry title="Idle Minutes" field="idleMinutes"
                  description="How long (in minutes) the VM stays alive after becoming idle. Set to 0 to dispose immediately after the first build.">
-            <f:textbox default="${descriptor.defaultIdleMinutes}" />
+            <f:number default="${descriptor.defaultIdleMinutes}" min="0" />
         </f:entry>
         <f:entry title="Orphan Grace Period (minutes)" field="orphanGracePeriodMinutes"
                  description="How long a VM must exist without a registered agent before being considered orphaned and cleaned up.">
-            <f:textbox default="${descriptor.defaultOrphanGracePeriodMinutes}" />
+            <f:number default="${descriptor.defaultOrphanGracePeriodMinutes}" min="0" />
         </f:entry>
     </f:section>
 
     <f:section title="VM Provisioning">
         <f:entry title="Provisioning Timeout (minutes)" field="provisioningTimeoutMinutes"
                  description="Maximum time to wait for the VM to be ready and get an IP address. Increase if disk cloning takes longer.">
-            <f:textbox default="${descriptor.defaultProvisioningTimeoutMinutes}" />
+            <f:number default="${descriptor.defaultProvisioningTimeoutMinutes}" min="1" />
         </f:entry>
         <f:entry title="Max Provision Attempts" field="maxProvisionAttempts"
                  description="Number of extra VM provisioning tries after the first failure before cancelling builds whose assigned label is satisfied by this template. 0 = no retries, 1 = one retry (default), -1 = unlimited (not recommended).">
-            <f:textbox default="${descriptor.defaultMaxProvisionAttempts}" />
+            <f:number default="${descriptor.defaultMaxProvisionAttempts}" min="-1" />
         </f:entry>
     </f:section>
 
-    <script>
-        (function() {
-            // Get reference to this script's location in the DOM
-            var scriptElement = document.currentScript;
-            
-            function updateVisibility(select) {
-                // Find the container that holds both the select and the settings divs
-                var container = select.closest('.repeated-chunk') || 
-                               select.closest('.jenkins-section') ||
-                               select.closest('form') ||
-                               document.body;
-                
-                var dataSourceFields = container.querySelector('.data-source-fields');
-                var imageField = container.querySelector('.image-field');
-                var value = select.value;
-                
-                // If select has no value yet (not populated), default to showing containerDisk
-                // since that's the first option and the default in the Java code
-                if (!value &amp;&amp; select.options.length === 0) {
-                    value = 'containerDisk';
-                }
-                
-                if (dataSourceFields) {
-                    dataSourceFields.style.display = (value === 'dataSource' || value === 'dataSourceImport') ? '' : 'none';
-                }
-                if (imageField) {
-                    imageField.style.display = (value === 'containerDisk' || value === 'dataSourceImport' || value === '') ? '' : 'none';
-                }
-            }
-            
-            function initializeSelect(select) {
-                // Avoid double-initialization of event handlers
-                if (select.dataset.diskSourceInitialized) {
-                    // But still update visibility in case options are now populated
-                    updateVisibility(select);
-                    return;
-                }
-                select.dataset.diskSourceInitialized = 'true';
-                
-                updateVisibility(select);
-                select.addEventListener('change', function() {
-                    updateVisibility(select);
-                });
-                
-                // Watch for options being populated (Jenkins fills selects asynchronously)
-                var observer = new MutationObserver(function(mutations) {
-                    updateVisibility(select);
-                    // Once we have options, we can stop observing
-                    if (select.options.length > 0) {
-                        observer.disconnect();
-                    }
-                });
-                observer.observe(select, { childList: true, subtree: true });
-            }
-            
-            // Initialize on page load with a small delay to ensure DOM is ready
-            setTimeout(function() {
-                var container = scriptElement.closest('.repeated-chunk') || 
-                               scriptElement.closest('.jenkins-section') ||
-                               scriptElement.closest('form') ||
-                               document.body;
-                var selects = container.querySelectorAll('select[name$="diskSourceType"]');
-                selects.forEach(initializeSelect);
-            }, 100);
-            
-            // Handle dynamically added templates using Jenkins' Behaviour system
-            if (window.Behaviour) {
-                Behaviour.specify('select[name$="diskSourceType"]', 'diskSourceTypeToggle', 0, function(select) {
-                    initializeSelect(select);
-                });
-            }
-        })();
-    </script>
+    <st:adjunct includes="io.jenkins.plugins.kubevirt.KubeVirtTemplate.config"/>
 </j:jelly>

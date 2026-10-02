@@ -57,6 +57,8 @@ import javax.net.ssl.X509TrustManager;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
+import hudson.util.Secret;
 
 /**
  * Establishes a WebSocket tunnel to the KubeVirt subresource API and exposes it
@@ -90,7 +92,9 @@ public class KubeVirtWebSocketTunnel implements Closeable {
     private final ExecutorService executor;
     private final HttpClient httpClient;
     private final String wsUrl;
-    private final String token;
+    /** Runtime Kubernetes API token; this class is not persisted as Jenkins configuration. */
+    @SuppressWarnings("lgtm[jenkins/plaintext-storage]")
+    private final Secret token;
     private final AtomicBoolean running = new AtomicBoolean(true);
 
     /**
@@ -103,7 +107,7 @@ public class KubeVirtWebSocketTunnel implements Closeable {
     private final Set<Socket> activeConnections = ConcurrentHashMap.newKeySet();
 
     private KubeVirtWebSocketTunnel(ServerSocket serverSocket, HttpClient httpClient,
-                                     String wsUrl, String token, String vmiName) {
+                                     String wsUrl, Secret token, String vmiName) {
         this.serverSocket = serverSocket;
         this.httpClient = httpClient;
         this.wsUrl = wsUrl;
@@ -132,12 +136,12 @@ public class KubeVirtWebSocketTunnel implements Closeable {
      * @return A tunnel instance with a local port ready for connections
      * @throws IOException If the local server socket cannot be created
      */
-    public static KubeVirtWebSocketTunnel open(String serverUrl, String token, boolean ignoreSsl,
+    public static KubeVirtWebSocketTunnel open(String serverUrl, Secret token, boolean ignoreSsl,
                                                 String namespace, String vmiName,
                                                 int targetPort) throws IOException {
         String wsUrl = buildSubresourceUrl(serverUrl, namespace, vmiName, targetPort);
 
-        LOGGER.log(Level.INFO, "Opening WebSocket tunnel to VMI {0}/{1} port {2,number,#}",
+        LOGGER.log(Level.FINE, "Opening WebSocket tunnel to VMI {0}/{1} port {2,number,#}",
                 new Object[]{namespace, vmiName, targetPort});
         LOGGER.log(Level.FINE, "WebSocket URL: {0}", wsUrl);
 
@@ -153,7 +157,7 @@ public class KubeVirtWebSocketTunnel implements Closeable {
         KubeVirtWebSocketTunnel tunnel = new KubeVirtWebSocketTunnel(ss, httpClient, wsUrl, token, vmiName);
         tunnel.startAcceptLoop();
 
-        LOGGER.log(Level.INFO, "WebSocket tunnel listening on 127.0.0.1:{0,number,#} for VMI {1}/{2}",
+        LOGGER.log(Level.FINE, "WebSocket tunnel listening on 127.0.0.1:{0,number,#} for VMI {1}/{2}",
                 new Object[]{ss.getLocalPort(), namespace, vmiName});
 
         return tunnel;
@@ -186,7 +190,7 @@ public class KubeVirtWebSocketTunnel implements Closeable {
             return; // Already closed
         }
 
-        LOGGER.log(Level.INFO, "Closing WebSocket tunnel on port {0,number,#}", serverSocket.getLocalPort());
+        LOGGER.log(Level.FINE, "Closing WebSocket tunnel on port {0,number,#}", serverSocket.getLocalPort());
 
         // Close the server socket to unblock accept()
         try {
@@ -343,9 +347,12 @@ public class KubeVirtWebSocketTunnel implements Closeable {
      * @throws IOException If the connection fails
      */
     private WebSocket connectWebSocket(OutputStream tcpOut) throws IOException {
+        if (token == null) {
+            throw new IOException("Kubernetes OAuth token is not configured for WebSocket tunnel");
+        }
         try {
             CompletableFuture<WebSocket> wsFuture = httpClient.newWebSocketBuilder()
-                    .header("Authorization", "Bearer " + token)
+                    .header("Authorization", "Bearer " + token.getPlainText())
                     .subprotocols(KubeVirtConfiguration.KUBEVIRT_WS_SUBPROTOCOL)
                     .connectTimeout(java.time.Duration.ofSeconds(
                             KubeVirtConfiguration.WS_CONNECT_TIMEOUT_SECONDS))
@@ -506,6 +513,7 @@ public class KubeVirtWebSocketTunnel implements Closeable {
      * @return A configured HttpClient instance
      * @throws IOException If the SSL context cannot be created
      */
+    @SuppressWarnings("lgtm[jenkins/unsafe-calls]")
     private static HttpClient buildHttpClient(boolean ignoreSsl) throws IOException {
         HttpClient.Builder builder = HttpClient.newBuilder()
                 .connectTimeout(java.time.Duration.ofSeconds(
@@ -514,6 +522,7 @@ public class KubeVirtWebSocketTunnel implements Closeable {
         if (ignoreSsl) {
             try {
                 SSLContext sslContext = SSLContext.getInstance("TLS");
+                // lgtm[jenkins/unsafe-calls] -- limited to this HttpClient when cloud admin enables ignoreSsl
                 sslContext.init(null, new TrustManager[]{new TrustAllCertsManager()}, null);
                 builder.sslContext(sslContext);
             } catch (NoSuchAlgorithmException | KeyManagementException e) {
@@ -624,16 +633,22 @@ public class KubeVirtWebSocketTunnel implements Closeable {
     @SuppressWarnings("java:S4830") // Intentionally trusting all certs when configured
     private static class TrustAllCertsManager implements X509TrustManager {
         @Override
+        @SuppressFBWarnings(value = "WEAK_TRUST_MANAGER",
+                justification = "Used only when the cloud administrator explicitly enables ignoreSsl")
         public void checkClientTrusted(X509Certificate[] chain, String authType) {
             // Trust all
         }
 
         @Override
+        @SuppressFBWarnings(value = "WEAK_TRUST_MANAGER",
+                justification = "Used only when the cloud administrator explicitly enables ignoreSsl")
         public void checkServerTrusted(X509Certificate[] chain, String authType) {
             // Trust all
         }
 
         @Override
+        @SuppressFBWarnings(value = "WEAK_TRUST_MANAGER",
+                justification = "Used only when the cloud administrator explicitly enables ignoreSsl")
         public X509Certificate[] getAcceptedIssuers() {
             return new X509Certificate[0];
         }

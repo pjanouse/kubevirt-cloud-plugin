@@ -276,13 +276,13 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
     @Override
     public Cloud reconfigure(@NonNull StaplerRequest2 req, JSONObject form) throws Descriptor.FormException {
         // Cloud configuration doesn't contain templates anymore, so just keep existing ones.
-        LOGGER.log(Level.INFO, "Reconfiguring cloud ''{0}'', preserving {1} templates",
+        LOGGER.log(Level.FINE, "Reconfiguring cloud ''{0}'', preserving {1} templates",
                 new Object[]{name, this.templates.size()});
         var newInstance = (KubeVirtCloud) super.reconfigure(req, form);
         // Preserve templates from the current instance since they're managed separately
         if (!this.templates.isEmpty()) {
             newInstance.setTemplates(this.templates);
-            LOGGER.log(Level.INFO, "Copied {0} templates to new cloud instance", this.templates.size());
+            LOGGER.log(Level.FINE, "Copied {0} templates to new cloud instance", this.templates.size());
         }
         return newInstance;
     }
@@ -599,7 +599,7 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
             int toProvision = Math.min(excessWorkload, Math.min(remainingGlobalCapacity, templateAvailable));
 
             while (toProvision > 0 && excessWorkload > 0) {
-                LOGGER.log(Level.INFO, "Provisioning node from template: {0}", templateName);
+                LOGGER.log(Level.FINE, "Provisioning node from template: {0}", templateName);
 
                 // Create a provisioning activity ID for cloud-stats tracking
                 ProvisioningActivity.Id provisioningId = new ProvisioningActivity.Id(
@@ -701,10 +701,10 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
         KubeVirtClientFactory clientFactory = new KubeVirtClientFactory();
         try (KubeVirt virt = clientFactory.createClient(getCloudConfig())) {
             virt.deleteVM(vmName, this.name, templateName);
-            LOGGER.log(Level.INFO, "Successfully deleted VM: {0}", vmName);
+            LOGGER.log(Level.FINE, "Successfully deleted VM: {0}", vmName);
         } catch (KubernetesClientException e) {
             if (e.getCode() == 404) {
-                LOGGER.log(Level.INFO, "VM {0} not found (may already be deleted)", vmName);
+                LOGGER.log(Level.FINE, "VM {0} not found (may already be deleted)", vmName);
                 return;
             }
             String errorMsg = String.format("Failed to delete VM '%s': %s", vmName, e.getMessage());
@@ -724,6 +724,7 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
             return "KubeVirt / OpenShift Virtualization";
         }
 
+        @SuppressWarnings("lgtm[jenkins/csrf]")
         public ListBoxModel doFillCredentialsIdItems(@AncestorInPath ItemGroup<?> context) {
             if (context == null) {
                 context = Jenkins.get();
@@ -754,7 +755,11 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
         /**
          * Validates the VM count cap field.
          */
+        @POST
         public FormValidation doCheckVmCountCap(@QueryParameter String value) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.trim().isEmpty()) {
                 return FormValidation.ok("Will use default: " + KubeVirtConfiguration.DEFAULT_GLOBAL_INSTANCE_CAP);
             }
@@ -772,11 +777,16 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
             }
         }
 
+        @POST
         public FormValidation doTestConnection(
                 @QueryParameter String serverUrl,
                 @QueryParameter String credentialsId,
                 @QueryParameter String namespace,
                 @QueryParameter boolean ignoreSsl) {
+
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
 
             // Validate required fields
             if (serverUrl == null || serverUrl.trim().isEmpty()) {
