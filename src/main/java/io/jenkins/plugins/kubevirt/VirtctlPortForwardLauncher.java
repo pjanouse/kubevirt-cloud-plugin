@@ -27,8 +27,10 @@ package io.jenkins.plugins.kubevirt;
 import hudson.model.TaskListener;
 import hudson.plugins.sshslaves.SSHLauncher;
 import hudson.plugins.sshslaves.verifiers.NonVerifyingKeyVerificationStrategy;
+import hudson.slaves.Cloud;
 import hudson.slaves.ComputerLauncher;
 import hudson.slaves.SlaveComputer;
+import hudson.util.Secret;
 import io.fabric8.kubernetes.api.model.GenericKubernetesResource;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
@@ -36,6 +38,7 @@ import io.fabric8.kubernetes.client.KubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.fabric8.kubernetes.client.dsl.base.ResourceDefinitionContext;
+import jenkins.model.Jenkins;
 
 import java.io.IOException;
 import java.io.PrintStream;
@@ -74,7 +77,12 @@ public class VirtctlPortForwardLauncher extends ComputerLauncher {
     private static final Logger LOGGER = Logger.getLogger(VirtctlPortForwardLauncher.class.getName());
 
     private final String serverUrl;
-    private final String token;
+    /**
+     * Name of the Jenkins cloud that owns this launcher.
+     * Used to look up the Kubernetes API token at runtime from the Jenkins
+     * credential store, so no secret is persisted to the agent XML on disk.
+     */
+    private final String cloudName;
     private final String namespace;
     private final boolean ignoreSsl;
     private final String vmName;
@@ -90,12 +98,12 @@ public class VirtctlPortForwardLauncher extends ComputerLauncher {
     private transient KubernetesClient client;
     private transient SSHLauncher delegateLauncher;
 
-    public VirtctlPortForwardLauncher(String serverUrl, String token, String namespace,
+    public VirtctlPortForwardLauncher(String serverUrl, String cloudName, String namespace,
                                        boolean ignoreSsl, String vmName,
                                        String sshCredentialsId, String javaPath, String remoteFS,
                                        int cloudInitWaitSeconds) {
         this.serverUrl = serverUrl;
-        this.token = token;
+        this.cloudName = cloudName;
         this.namespace = namespace;
         this.ignoreSsl = ignoreSsl;
         this.vmName = vmName;
@@ -115,23 +123,75 @@ public class VirtctlPortForwardLauncher extends ComputerLauncher {
                 : KubeVirtConfiguration.DEFAULT_CLOUD_INIT_WAIT_SECONDS;
     }
 
+    /**
+     * Returns the effective cloud name, falling back to the owning
+     * {@link KubeVirtAgent}'s cloud name when the launcher was deserialized
+     * from an older plugin version that persisted a {@code token} field
+     * instead of {@code cloudName}.
+     */
+    private String effectiveCloudName(SlaveComputer computer) {
+        if (cloudName != null) {
+            return cloudName;
+        }
+        if (computer != null && computer.getNode() instanceof KubeVirtAgent) {
+            String agentCloudName = ((KubeVirtAgent) computer.getNode()).getCloudName();
+            LOGGER.log(Level.FINE, "Launcher for VM {0} has no cloudName (upgraded from older plugin version), "
+                    + "falling back to agent cloud name: {1}", new Object[]{vmName, agentCloudName});
+            return agentCloudName;
+        }
+        return null;
+    }
+
+    private String resolveToken(String effectiveCloudName) throws IOException {
+        if (effectiveCloudName == null) {
+            throw new IOException("Cannot resolve Kubernetes token: cloud name is unknown. "
+                    + "The launcher for VM '" + vmName + "' may have been deserialized from an "
+                    + "incompatible plugin version.");
+        }
+        Cloud cloud = Jenkins.get().getCloud(effectiveCloudName);
+        if (!(cloud instanceof KubeVirtCloud)) {
+            throw new IOException("KubeVirt cloud '" + effectiveCloudName
+                    + "' not found. It may have been deleted or renamed.");
+        }
+        KubeVirtCloud kubeVirtCloud = (KubeVirtCloud) cloud;
+        String credentialsId = kubeVirtCloud.getCredentialsId();
+        try {
+            return new KubeVirtClientFactory().lookupToken(credentialsId);
+        } catch (IllegalStateException e) {
+            throw new IOException("Failed to resolve Kubernetes token for cloud '"
+                    + effectiveCloudName + "': " + e.getMessage(), e);
+        }
+    }
+
     @Override
     public void launch(SlaveComputer computer, TaskListener listener) throws IOException, InterruptedException {
         PrintStream log = listener.getLogger();
         KubeVirtLog.log(log, "Starting WebSocket tunnel for VM: " + vmName);
 
-        if (token == null || token.isEmpty()) {
+        String oauthToken;
+        try {
+            oauthToken = resolveToken(effectiveCloudName(computer));
+        } catch (IOException e) {
+            KubeVirtLog.error(listener, "ERROR: Failed to resolve Kubernetes token: "
+                    + KubeVirtLog.messageOf(e));
+            LOGGER.log(Level.SEVERE, "Failed to resolve Kubernetes token for VM " + vmName, e);
+            throw e;
+        }
+
+        if (oauthToken == null || oauthToken.isEmpty()) {
             KubeVirtLog.error(listener, "ERROR: Kubernetes token is null or empty! Tunnel will fail.");
             LOGGER.log(Level.SEVERE, "Kubernetes token is null or empty for VM {0}", vmName);
         } else {
-            KubeVirtLog.log(log, "Kubernetes token present (length: " + token.length() + ")");
+            KubeVirtLog.log(log, "Kubernetes API credentials resolved for port-forward tunnel");
         }
 
+        Secret runtimeToken = oauthToken != null && !oauthToken.isEmpty()
+                ? Secret.fromString(oauthToken) : null;
         try {
             // Create Kubernetes client (used only for VMI validation)
             Config config = new ConfigBuilder()
                     .withMasterUrl(serverUrl)
-                    .withOauthToken(token)
+                    .withOauthToken(oauthToken)
                     .withNamespace(namespace)
                     .withTrustCerts(ignoreSsl)
                     .build();
@@ -163,7 +223,7 @@ public class VirtctlPortForwardLauncher extends ComputerLauncher {
                     + "/portforward/" + KubeVirtConfiguration.DEFAULT_SSH_PORT + "/tcp");
 
             tunnel = KubeVirtWebSocketTunnel.open(
-                    serverUrl, token, ignoreSsl, namespace, vmName,
+                    serverUrl, runtimeToken, ignoreSsl, namespace, vmName,
                     KubeVirtConfiguration.DEFAULT_SSH_PORT);
 
             int localPort = tunnel.getLocalPort();
@@ -194,7 +254,7 @@ public class VirtctlPortForwardLauncher extends ComputerLauncher {
             // SSHLauncher treats auth failure as permanent, so we add our own retry layer.
             KubeVirtLog.log(log, "Configuring SSH connection...");
 
-            LOGGER.log(Level.INFO, "[{0}] SSH launch config: host=127.0.0.1, port={1}, "
+            LOGGER.log(Level.FINE, "[{0}] SSH launch config: host=127.0.0.1, port={1}, "
                             + "credentialsId={2}, launchTimeout={3}s, maxRetries={4}, "
                             + "retryWait={5}s, hostKeyVerification=NonVerifying",
                     new Object[]{vmName, String.valueOf(localPort), sshCredentialsId,
@@ -219,7 +279,7 @@ public class VirtctlPortForwardLauncher extends ComputerLauncher {
 
             // Log final launch result to system log
             if (computer.isOnline()) {
-                LOGGER.log(Level.INFO, "[{0}] SSH connection established successfully through WebSocket tunnel",
+                LOGGER.log(Level.FINE, "[{0}] SSH connection established successfully through WebSocket tunnel",
                         vmName);
             } else {
                 // Read full log for the final error report
@@ -413,7 +473,7 @@ public class VirtctlPortForwardLauncher extends ComputerLauncher {
         if (tunnel != null) {
             try {
                 tunnel.close();
-                LOGGER.log(Level.INFO, "Closed WebSocket tunnel for VM: " + vmName);
+                LOGGER.log(Level.FINE, "Closed WebSocket tunnel for VM: " + vmName);
             } catch (Exception e) {
                 LOGGER.log(Level.WARNING, "Error closing WebSocket tunnel for " + vmName, e);
             }

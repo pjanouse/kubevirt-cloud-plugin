@@ -113,7 +113,7 @@ public class KubeVirtPlannedNode extends NodeProvisioner.PlannedNode implements 
         String nodeName = provisioningId.getNodeName();
 
         if (future.isCancelled()) {
-            LOGGER.log(Level.INFO, "PlannedNode {0} was cancelled", nodeName);
+            LOGGER.log(Level.FINE, "PlannedNode {0} was cancelled", nodeName);
         } else if (future.isDone()) {
             try {
                 Node node = future.get();
@@ -127,7 +127,7 @@ public class KubeVirtPlannedNode extends NodeProvisioner.PlannedNode implements 
                 }
             } catch (InterruptedException | ExecutionException e) {
                 // Agent construction failed — no VM was created, nothing to clean up
-                LOGGER.log(Level.INFO,
+                LOGGER.log(Level.FINE,
                         "PlannedNode {0} failed during agent construction (no VM to clean up): {1}",
                         new Object[]{nodeName, e.getMessage()});
             }

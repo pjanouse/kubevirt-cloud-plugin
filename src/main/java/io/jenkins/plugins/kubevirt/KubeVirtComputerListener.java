@@ -72,7 +72,7 @@ public class KubeVirtComputerListener extends ComputerListener {
                     ProvisioningFailureTracker.reset(template.getId());
                 }
                 KubeVirtLog.log(listener.getLogger(), "Agent '" + agent.getNodeName() + "' is now online and ready for builds");
-                LOGGER.log(Level.INFO, "KubeVirt agent {0} is online", agent.getNodeName());
+                LOGGER.log(Level.FINE, "KubeVirt agent {0} is online", agent.getNodeName());
             }
         }
     }
@@ -84,7 +84,7 @@ public class KubeVirtComputerListener extends ComputerListener {
             if (agent != null) {
                 String nodeName = agent.getNodeName();
                 String reason = cause != null ? cause.toString() : "unknown";
-                LOGGER.log(Level.INFO, "KubeVirt agent {0} went offline: {1}", 
+                LOGGER.log(Level.FINE, "KubeVirt agent {0} went offline: {1}",
                         new Object[]{nodeName, reason});
                 
                 // DON'T automatically cleanup on offline - this could be a transient network issue.
@@ -234,14 +234,14 @@ public class KubeVirtComputerListener extends ComputerListener {
                         (KubeVirtAgent) jenkins.getNode(nodeName);
                 
                 if (agent != null) {
-                    LOGGER.log(Level.INFO, "Terminating agent {0} and VM due to: {1}", 
+                    LOGGER.log(Level.FINE, "Terminating agent {0} and VM due to: {1}",
                             new Object[]{nodeName, reason});
                     // Set termination reason before calling terminate()
                     agent.setTerminationReason(KubeVirtAgent.TerminationReason.LAUNCH_FAILURE);
                     // terminate() calls _terminate() which deletes the VM, 
                     // then removes the node from Jenkins
                     agent.terminate();
-                    LOGGER.log(Level.INFO, "Agent {0} terminated and VM deleted successfully", nodeName);
+                    LOGGER.log(Level.FINE, "Agent {0} terminated and VM deleted successfully", nodeName);
                 } else {
                     LOGGER.log(Level.FINE, "Agent {0} already removed", nodeName);
                 }

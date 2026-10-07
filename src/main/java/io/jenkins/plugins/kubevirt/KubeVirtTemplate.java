@@ -29,6 +29,7 @@ import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernameCredentials;
 import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.Extension;
 import hudson.Util;
 import hudson.model.Describable;
@@ -77,6 +78,8 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
     private final String dataSourceNamespace;
     private final String dataSourceName;
     private final String diskSize;
+    /** Kubernetes PVC access mode (ReadWriteOnce / ReadWriteMany), not a credential. */
+    @SuppressWarnings("lgtm[jenkins/plaintext-storage]")
     private final String accessMode;
     
     // Resource configuration - reserved (requests)
@@ -89,6 +92,8 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
     
     // SSH configuration
     private final String connectionType;
+    @SuppressFBWarnings(value = "PA_PASSWORD_SAVED_IN_PLAIN_TEXT",
+            justification = "Jenkins credentials identifier, not a password or secret value")
     private final String sshCredentialsId;
     private final int sshPort;
     private final String remoteFS;
@@ -590,7 +595,6 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         public String getDisplayName() {
             return "KubeVirt Template";
         }
-
         // ---- Default value getters for Jelly (used via ${descriptor.defaultXxx}) ----
 
         public String getDefaultDataSourceNamespace() {
@@ -660,7 +664,11 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             return items;
         }
 
+        @POST
         public FormValidation doCheckName(@QueryParameter String value) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.trim().isEmpty()) {
                 return FormValidation.error("Template Name is required. This will be used in the VM name.");
             }
@@ -679,6 +687,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             return items;
         }
         
+        @SuppressWarnings("lgtm[jenkins/csrf]")
         public ListBoxModel doFillSshCredentialsIdItems(@AncestorInPath ItemGroup<?> context) {
             if (context == null) {
                 context = Jenkins.get();
@@ -699,7 +708,11 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
                     );
         }
         
+        @POST
         public FormValidation doCheckSshCredentialsId(@QueryParameter String value) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.trim().isEmpty()) {
                 return FormValidation.error("SSH Credentials are required to connect to the VM.");
             }
@@ -710,8 +723,12 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
          * Validates the CPU field (reserved/requests).
          * Accepts Kubernetes CPU format: integer cores (e.g., "2") or millicores (e.g., "500m").
          */
+        @POST
         public FormValidation doCheckCpu(@QueryParameter String value,
                                           @QueryParameter String cpuLimit) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.trim().isEmpty()) {
                 return FormValidation.error("CPU is required.");
             }
@@ -757,8 +774,12 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
          * Validates the Memory field (reserved/requests).
          * Accepts Kubernetes memory format: number with suffix (Ki, Mi, Gi, Ti, K, M, G, T).
          */
+        @POST
         public FormValidation doCheckMemory(@QueryParameter String value,
                                              @QueryParameter String memoryLimit) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.trim().isEmpty()) {
                 return FormValidation.error("Memory is required.");
             }
@@ -804,8 +825,12 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
          * Validates the CPU Limit field.
          * Accepts Kubernetes CPU format: integer cores (e.g., "2") or millicores (e.g., "500m").
          */
+        @POST
         public FormValidation doCheckCpuLimit(@QueryParameter String value,
                                               @QueryParameter String cpu) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.trim().isEmpty()) {
                 return FormValidation.ok("No limit set (VM can use all available CPU)");
             }
@@ -846,8 +871,12 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
          * Validates the Memory Limit field.
          * Accepts Kubernetes memory format: number with suffix (Ki, Mi, Gi, Ti, K, M, G, T).
          */
+        @POST
         public FormValidation doCheckMemoryLimit(@QueryParameter String value,
                                                   @QueryParameter String memory) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.trim().isEmpty()) {
                 return FormValidation.ok("No limit set (VM can use all available memory)");
             }
@@ -925,7 +954,11 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
          * Validates the Disk Size field.
          * Accepts Kubernetes storage format: number with suffix (Ki, Mi, Gi, Ti, K, M, G, T).
          */
+        @POST
         public FormValidation doCheckDiskSize(@QueryParameter String value) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.trim().isEmpty()) {
                 // Will use default, so this is OK
                 return FormValidation.ok("Will use default: " + KubeVirtConfiguration.DEFAULT_DISK_SIZE);
@@ -958,7 +991,11 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         /**
          * Validates the SSH Port field.
          */
+        @POST
         public FormValidation doCheckSshPort(@QueryParameter String value) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.trim().isEmpty()) {
                 return FormValidation.ok("Will use default port: " + KubeVirtConfiguration.DEFAULT_SSH_PORT);
             }
@@ -981,7 +1018,11 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         /**
          * Validates the Remote FS field.
          */
+        @POST
         public FormValidation doCheckRemoteFS(@QueryParameter String value) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.trim().isEmpty()) {
                 return FormValidation.ok("Will use default: " + KubeVirtConfiguration.DEFAULT_REMOTE_FS);
             }
@@ -997,9 +1038,12 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         /**
          * Validates the Container Disk Image field.
          */
+        @POST
         public FormValidation doCheckImage(@QueryParameter String value,
                                            @QueryParameter String diskSourceType) {
-            // Only required for ContainerDisk and DataSource Import
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }            // Only required for ContainerDisk and DataSource Import
             if (!KubeVirtConfiguration.DISK_SOURCE_CONTAINER_DISK.equals(diskSourceType)
                     && !KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE_IMPORT.equals(diskSourceType)) {
                 return FormValidation.ok();
@@ -1024,9 +1068,12 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         /**
          * Validates the DataSource Name field.
          */
+        @POST
         public FormValidation doCheckDataSourceName(@QueryParameter String value,
                                                      @QueryParameter String diskSourceType) {
-            // Required for DataSource (Clone) and DataSource (Import)
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }            // Required for DataSource (Clone) and DataSource (Import)
             if (!KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE.equals(diskSourceType)
                     && !KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE_IMPORT.equals(diskSourceType)) {
                 return FormValidation.ok();
@@ -1055,9 +1102,12 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         /**
          * Validates the DataSource Namespace field.
          */
+        @POST
         public FormValidation doCheckDataSourceNamespace(@QueryParameter String value,
                                                           @QueryParameter String diskSourceType) {
-            // Required for DataSource (Clone) and DataSource (Import)
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }            // Required for DataSource (Clone) and DataSource (Import)
             if (!KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE.equals(diskSourceType)
                     && !KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE_IMPORT.equals(diskSourceType)) {
                 return FormValidation.ok();
@@ -1086,8 +1136,12 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         /**
          * Populates the cloud-init config dropdown with available configs.
          */
+        @SuppressWarnings("lgtm[jenkins/csrf]")
         public ListBoxModel doFillCloudInitIdItems() {
             ListBoxModel items = new ListBoxModel();
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return items;
+            }
             items.add("-- None --", "");
             for (Config config : ConfigFiles.getConfigsInContext(
                     Jenkins.get(), CloudInitConfig.CloudInitConfigProvider.class)) {
@@ -1099,7 +1153,11 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         /**
          * Validates the selected cloud-init config and provides a link to edit it.
          */
+        @POST
         public FormValidation doCheckCloudInitId(@QueryParameter String value) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.isEmpty()) {
                 return FormValidation.warning(
                     "No cloud-init config selected. VM will boot without cloud-init customization. " +
@@ -1121,7 +1179,11 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         /**
          * Validates the idle minutes field.
          */
+        @POST
         public FormValidation doCheckIdleMinutes(@QueryParameter String value) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.isEmpty()) {
                 return FormValidation.ok(); // Will use default
             }
@@ -1142,7 +1204,11 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         /**
          * Validates the instance cap field.
          */
+        @POST
         public FormValidation doCheckInstanceCap(@QueryParameter String value) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.trim().isEmpty()) {
                 return FormValidation.ok("Will use default: " + KubeVirtConfiguration.DEFAULT_TEMPLATE_INSTANCE_CAP);
             }
@@ -1163,7 +1229,11 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         /**
          * Validates the provisioning timeout minutes field.
          */
+        @POST
         public FormValidation doCheckProvisioningTimeoutMinutes(@QueryParameter String value) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.isEmpty()) {
                 return FormValidation.ok("Will use default: " + KubeVirtConfiguration.DEFAULT_PROVISIONING_TIMEOUT_MINUTES + " minutes");
             }
@@ -1187,7 +1257,11 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         /**
          * Validates the max provision attempts field (retry count).
          */
+        @POST
         public FormValidation doCheckMaxProvisionAttempts(@QueryParameter String value) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.isEmpty()) {
                 return FormValidation.ok("Will use default: "
                         + KubeVirtConfiguration.DEFAULT_MAX_PROVISION_ATTEMPTS
@@ -1217,7 +1291,11 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         /**
          * Validates the cloud-init wait seconds field.
          */
+        @POST
         public FormValidation doCheckCloudInitWaitSeconds(@QueryParameter String value) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.isEmpty()) {
                 return FormValidation.ok("Will use default: " + KubeVirtConfiguration.DEFAULT_CLOUD_INIT_WAIT_SECONDS + " seconds");
             }
@@ -1241,7 +1319,11 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         /**
          * Validates the orphan grace period minutes field.
          */
+        @POST
         public FormValidation doCheckOrphanGracePeriodMinutes(@QueryParameter String value) {
+            if (!KubeVirtStaplerSecurity.canManage()) {
+                return FormValidation.ok();
+            }
             if (value == null || value.isEmpty()) {
                 return FormValidation.ok("Will use default: " + KubeVirtConfiguration.DEFAULT_ORPHAN_GRACE_PERIOD_MINUTES + " minutes");
             }
@@ -1270,7 +1352,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         // Initialize ID for templates that were created before ID was added
         if (id == null) {
             id = UUID.randomUUID().toString();
-            LOGGER.log(java.util.logging.Level.INFO, "Template ''{0}'' had no ID, generated new ID: {1}", 
+            LOGGER.log(java.util.logging.Level.FINE, "Template ''{0}'' had no ID, generated new ID: {1}", 
                     new Object[]{name, id});
         }
         LOGGER.log(java.util.logging.Level.FINE, "Template ''{0}'' loaded with ID: {1}", 

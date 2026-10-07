@@ -119,6 +119,7 @@ public class KubeVirtComputer extends AbstractCloudComputer<KubeVirtAgent> imple
     @RequirePOST
     @Override
     public HttpResponse doDoDelete() throws IOException {
+        checkPermission(DELETE);
         KubeVirtAgent agent = getNode();
         if (agent != null) {
             agent.setTerminationReason(KubeVirtAgent.TerminationReason.USER_DELETED);
