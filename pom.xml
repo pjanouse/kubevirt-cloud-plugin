@@ -34,9 +34,9 @@
   <properties>
     <changelist>999999-SNAPSHOT</changelist>
     <gitHubRepo>jenkinsci/${project.artifactId}-plugin</gitHubRepo>
-    <jenkins.baseline>2.541</jenkins.baseline>
+    <jenkins.baseline>2.555</jenkins.baseline>
     <jenkins.version>${jenkins.baseline}.3</jenkins.version>
-    <jenkins.bom.version>7002.v028a_3607ddc8</jenkins.bom.version>
+    <jenkins.bom.version>7134.vc450c4b_83de0</jenkins.bom.version>
     <hpi.strictBundledArtifacts>true</hpi.strictBundledArtifacts>
     <banObsoleteDependencyOverrides.skip>false</banObsoleteDependencyOverrides.skip>
     <ban-junit4-imports.skip>false</ban-junit4-imports.skip>
