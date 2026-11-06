@@ -76,7 +76,7 @@ public class KubeVirtNamingStrategy {
      * @return A sanitized name suitable for use in Kubernetes resource names
      */
     String sanitizeTemplateName(String templateName) {
-        if (templateName == null || templateName.trim().isEmpty()) {
+        if (templateName == null || templateName.isBlank()) {
             return "vm";
         }
 

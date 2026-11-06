@@ -50,8 +50,7 @@ public class KubeVirtComputerListener extends ComputerListener {
     
     @Override
     public void preLaunch(Computer c, TaskListener listener) throws IOException, InterruptedException {
-        if (c instanceof KubeVirtComputer) {
-            KubeVirtComputer kvc = (KubeVirtComputer) c;
+        if (c instanceof KubeVirtComputer kvc) {
             KubeVirtAgent agent = kvc.getNode();
             if (agent != null) {
                 KubeVirtLog.log(listener.getLogger(), "Preparing to launch agent on VM: " + agent.getNodeName());
@@ -63,8 +62,7 @@ public class KubeVirtComputerListener extends ComputerListener {
     
     @Override
     public void onOnline(Computer c, TaskListener listener) throws IOException, InterruptedException {
-        if (c instanceof KubeVirtComputer) {
-            KubeVirtComputer kvc = (KubeVirtComputer) c;
+        if (c instanceof KubeVirtComputer kvc) {
             KubeVirtAgent agent = kvc.getNode();
             if (agent != null) {
                 KubeVirtTemplate template = resolveTemplate(agent);
@@ -79,8 +77,8 @@ public class KubeVirtComputerListener extends ComputerListener {
     
     @Override
     public void onOffline(Computer c, OfflineCause cause) {
-        if (c instanceof KubeVirtComputer) {
-            KubeVirtAgent agent = ((KubeVirtComputer) c).getNode();
+        if (c instanceof KubeVirtComputer kvc) {
+            KubeVirtAgent agent = kvc.getNode();
             if (agent != null) {
                 String nodeName = agent.getNodeName();
                 String reason = cause != null ? cause.toString() : "unknown";
@@ -230,10 +228,7 @@ public class KubeVirtComputerListener extends ComputerListener {
                 Thread.sleep(1000);
                 
                 Jenkins jenkins = Jenkins.get();
-                KubeVirtAgent agent = 
-                        (KubeVirtAgent) jenkins.getNode(nodeName);
-                
-                if (agent != null) {
+                if (jenkins.getNode(nodeName) instanceof KubeVirtAgent agent) {
                     LOGGER.log(Level.FINE, "Terminating agent {0} and VM due to: {1}",
                             new Object[]{nodeName, reason});
                     // Set termination reason before calling terminate()

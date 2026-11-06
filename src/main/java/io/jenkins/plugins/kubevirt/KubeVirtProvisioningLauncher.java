@@ -32,6 +32,7 @@ import io.fabric8.kubernetes.client.KubernetesClientException;
 import io.jenkins.plugins.kubevirt.exception.ErrorCode;
 import io.jenkins.plugins.kubevirt.exception.ProvisioningException;
 import io.jenkins.plugins.kubevirt.internal.KubernetesClientExceptions;
+import io.jenkins.plugins.kubevirt.disksource.KubeVirtDiskSource;
 import io.jenkins.plugins.kubevirt.internal.KubeVirt;
 import jenkins.model.Jenkins;
 
@@ -95,12 +96,10 @@ public class KubeVirtProvisioningLauncher extends ComputerLauncher {
     public synchronized void launch(SlaveComputer computer, TaskListener listener)
             throws IOException, InterruptedException {
 
-        if (!(computer instanceof KubeVirtComputer)) {
+        if (!(computer instanceof KubeVirtComputer kvc)) {
             throw new IllegalArgumentException(
                     "KubeVirtProvisioningLauncher can only be used with KubeVirtComputer");
         }
-
-        KubeVirtComputer kvc = (KubeVirtComputer) computer;
         KubeVirtAgent agent = kvc.getNode();
         if (agent == null) {
             throw new IllegalStateException("Node has been removed, cannot launch " + computer.getName());
@@ -248,63 +247,19 @@ public class KubeVirtProvisioningLauncher extends ComputerLauncher {
 
     private void createVM(KubeVirt virt, KubeVirtTemplate template, String nodeName,
                           String cloudName, String cloudInitContent, ProvisioningCallback callback) {
-        boolean injectTmpDiskConfig = template.isInjectTmpDiskConfig();
-        String templateName = template.getName();
-        String resourceLog = buildResourceLogMessage(template);
-
-        if (template.isDataSourceImport()) {
-            callback.log("Creating VM from DataSource Import: " + template.getImage());
-            callback.log("DataSource: " + template.getDataSourceNamespace() + "/" + template.getDataSourceName());
-            callback.log("Disk size: " + template.getDiskSize() + ", Access mode: " + template.getAccessMode() + resourceLog);
-
-            if (template.getDataSourceNamespace() == null || template.getDataSourceNamespace().trim().isEmpty()) {
-                throw new IllegalArgumentException("DataSource namespace is required but not configured");
-            }
-            if (template.getDataSourceName() == null || template.getDataSourceName().trim().isEmpty()) {
-                throw new IllegalArgumentException("DataSource name is required but not configured");
-            }
-
-            virt.createVMFromDataSourceImport(
-                    nodeName, cloudName, templateName,
-                    template.getDataSourceNamespace(), template.getDataSourceName(),
-                    template.getImage(), template.getDiskSize(), template.getAccessMode(),
-                    template.getCpu(), template.getMemory(),
-                    template.getCpuLimit(), template.getMemoryLimit(),
-                    cloudInitContent != null ? cloudInitContent : "",
-                    injectTmpDiskConfig, callback
-            );
-        } else if (template.isDataSource()) {
-            callback.log("Creating VM from DataSource: " + template.getDataSourceNamespace() + "/" + template.getDataSourceName());
-            callback.log("Disk size: " + template.getDiskSize() + ", Access mode: " + template.getAccessMode() + resourceLog);
-
-            if (template.getDataSourceNamespace() == null || template.getDataSourceNamespace().trim().isEmpty()) {
-                throw new IllegalArgumentException("DataSource namespace is required but not configured");
-            }
-            if (template.getDataSourceName() == null || template.getDataSourceName().trim().isEmpty()) {
-                throw new IllegalArgumentException("DataSource name is required but not configured");
-            }
-
-            virt.createVMFromDataSource(
-                    nodeName, cloudName, templateName,
-                    template.getDataSourceNamespace(), template.getDataSourceName(),
-                    template.getDiskSize(), template.getAccessMode(),
-                    template.getCpu(), template.getMemory(),
-                    template.getCpuLimit(), template.getMemoryLimit(),
-                    cloudInitContent != null ? cloudInitContent : "",
-                    injectTmpDiskConfig, callback
-            );
-        } else {
-            callback.log("Creating VM from ContainerDisk: " + template.getImage());
-            callback.log("Disk size: " + template.getDiskSize() + ", Access mode: " + template.getAccessMode() + resourceLog);
-            virt.createVM(
-                    nodeName, cloudName, templateName,
-                    template.getImage(), template.getDiskSize(), template.getAccessMode(),
-                    template.getCpu(), template.getMemory(),
-                    template.getCpuLimit(), template.getMemoryLimit(),
-                    cloudInitContent != null ? cloudInitContent : "",
-                    injectTmpDiskConfig, callback
-            );
-        }
+        KubeVirtDiskSource.VmProvisioningContext context = new KubeVirtDiskSource.VmProvisioningContext(
+                nodeName,
+                cloudName,
+                template.getName(),
+                template.getDiskSize(),
+                template.getAccessMode(),
+                template.getCpu(),
+                template.getMemory(),
+                template.getCpuLimit(),
+                template.getMemoryLimit(),
+                cloudInitContent,
+                template.isInjectTmpDiskConfig());
+        template.getDiskSource().createVm(virt, context, callback);
     }
 
     private String waitForVMReady(KubeVirt virt, KubeVirtTemplate template, String nodeName,
@@ -489,19 +444,6 @@ public class KubeVirtProvisioningLauncher extends ComputerLauncher {
 
     // ==================== Helpers ====================
 
-    private String buildResourceLogMessage(KubeVirtTemplate template) {
-        StringBuilder sb = new StringBuilder();
-        sb.append(", CPU: ").append(template.getCpu());
-        if (template.getCpuLimit() != null && !template.getCpuLimit().isEmpty()) {
-            sb.append(" (limit: ").append(template.getCpuLimit()).append(")");
-        }
-        sb.append(", Memory: ").append(template.getMemory());
-        if (template.getMemoryLimit() != null && !template.getMemoryLimit().isEmpty()) {
-            sb.append(" (limit: ").append(template.getMemoryLimit()).append(")");
-        }
-        return sb.toString();
-    }
-
     private void logRetentionPolicy(KubeVirtTemplate template, ProvisioningCallback callback) {
         int idleMinutes = template.getIdleMinutes();
         String retentionDesc = idleMinutes == 0
@@ -539,8 +481,8 @@ public class KubeVirtProvisioningLauncher extends ComputerLauncher {
      */
     private KubeVirtCloud lookupCloud() {
         hudson.slaves.Cloud cloud = Jenkins.get().getCloud(cloudName);
-        if (cloud instanceof KubeVirtCloud) {
-            return (KubeVirtCloud) cloud;
+        if (cloud instanceof KubeVirtCloud kubeVirtCloud) {
+            return kubeVirtCloud;
         }
         throw new IllegalStateException("Cloud '" + cloudName + "' not found or is not a KubeVirtCloud");
     }

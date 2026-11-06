@@ -28,7 +28,6 @@ import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
-import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import hudson.Extension;
 import hudson.model.Descriptor;
@@ -127,7 +126,7 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
      * @return The parsed value, or default if empty/invalid. 0 means unlimited.
      */
     private static Integer parseVmCountCap(String vmCountCap) {
-        if (vmCountCap == null || vmCountCap.trim().isEmpty()) {
+        if (vmCountCap == null || vmCountCap.isBlank()) {
             return KubeVirtConfiguration.DEFAULT_GLOBAL_INSTANCE_CAP;
         }
         try {
@@ -205,8 +204,12 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
     @Override
     public void replaceTemplate(KubeVirtTemplate oldTemplate, KubeVirtTemplate newTemplate) {
         this.checkManagePermission();
-        this.removeTemplate(oldTemplate);
-        this.addTemplate(newTemplate);
+        int index = this.templates.indexOf(oldTemplate);
+        if (index >= 0) {
+            this.templates.set(index, newTemplate);
+        } else {
+            this.templates.add(newTemplate);
+        }
     }
 
     @Override
@@ -247,6 +250,52 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
                 .filter(t -> id.equals(t.getId()))
                 .findFirst()
                 .orElse(null);
+    }
+
+    /**
+     * Moves a template one position earlier in the list.
+     * Earlier templates are preferred when multiple templates match the same label.
+     */
+    public void moveTemplateUp(@NonNull String templateId) {
+        checkManagePermission();
+        int index = indexOfTemplate(templateId);
+        if (index > 0) {
+            templates.add(index - 1, templates.remove(index));
+        }
+    }
+
+    /**
+     * Moves a template one position later in the list.
+     */
+    public void moveTemplateDown(@NonNull String templateId) {
+        checkManagePermission();
+        int index = indexOfTemplate(templateId);
+        if (index >= 0 && index < templates.size() - 1) {
+            templates.add(index + 1, templates.remove(index));
+        }
+    }
+
+    private int indexOfTemplate(@NonNull String templateId) {
+        for (int i = 0; i < templates.size(); i++) {
+            if (templateId.equals(templates.get(i).getId())) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    @POST
+    public HttpResponse doMoveTemplateUp(@QueryParameter String templateId) throws IOException {
+        moveTemplateUp(templateId);
+        Jenkins.get().save();
+        return FormApply.success("templates");
+    }
+
+    @POST
+    public HttpResponse doMoveTemplateDown(@QueryParameter String templateId) throws IOException {
+        moveTemplateDown(templateId);
+        Jenkins.get().save();
+        return FormApply.success("templates");
     }
 
     /**
@@ -321,8 +370,8 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
     public static List<KubeVirtCloud> getAllClouds() {
         List<KubeVirtCloud> result = new ArrayList<>();
         for (Cloud cloud : Jenkins.get().clouds) {
-            if (cloud instanceof KubeVirtCloud) {
-                result.add((KubeVirtCloud) cloud);
+            if (cloud instanceof KubeVirtCloud kubeVirtCloud) {
+                result.add(kubeVirtCloud);
             }
         }
         return result;
@@ -470,11 +519,8 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
         int count = 0;
         Jenkins jenkins = Jenkins.get();
         for (Node node : jenkins.getNodes()) {
-            if (node instanceof KubeVirtAgent) {
-                KubeVirtAgent agent = (KubeVirtAgent) node;
-                if (name.equals(agent.getCloudName())) {
-                    count++;
-                }
+            if (node instanceof KubeVirtAgent agent && name.equals(agent.getCloudName())) {
+                count++;
             }
         }
         return count;
@@ -492,12 +538,10 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
         int count = 0;
         Jenkins jenkins = Jenkins.get();
         for (Node node : jenkins.getNodes()) {
-            if (node instanceof KubeVirtAgent) {
-                KubeVirtAgent agent = (KubeVirtAgent) node;
-                if (name.equals(agent.getCloudName()) &&
-                    templateName.equals(agent.getTemplateName())) {
-                    count++;
-                }
+            if (node instanceof KubeVirtAgent agent
+                    && name.equals(agent.getCloudName())
+                    && templateName.equals(agent.getTemplateName())) {
+                count++;
             }
         }
         return count;
@@ -729,8 +773,8 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
             if (context == null) {
                 context = Jenkins.get();
             }
-            if (context instanceof AccessControlled) {
-                if (!((AccessControlled) context).hasPermission(Jenkins.ADMINISTER)) {
+            if (context instanceof AccessControlled accessControlled) {
+                if (!accessControlled.hasPermission(Jenkins.ADMINISTER)) {
                     return new StandardListBoxModel().includeCurrentValue("");
                 }
             }
@@ -740,14 +784,14 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
                             ACL.SYSTEM2,
                             context,
                             StandardUsernamePasswordCredentials.class,
-                            Collections.<DomainRequirement>emptyList(),
+                            Collections.emptyList(),
                             CredentialsMatchers.always()
                     )
                     .includeMatchingAs(
                             ACL.SYSTEM2,
                             context,
                             StringCredentials.class,
-                            Collections.<DomainRequirement>emptyList(),
+                            Collections.emptyList(),
                             CredentialsMatchers.always()
                     );
         }
@@ -760,7 +804,7 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
             if (!KubeVirtStaplerSecurity.canManage()) {
                 return FormValidation.ok();
             }
-            if (value == null || value.trim().isEmpty()) {
+            if (value == null || value.isBlank()) {
                 return FormValidation.ok("Will use default: " + KubeVirtConfiguration.DEFAULT_GLOBAL_INSTANCE_CAP);
             }
             try {
@@ -789,13 +833,13 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
             }
 
             // Validate required fields
-            if (serverUrl == null || serverUrl.trim().isEmpty()) {
+            if (serverUrl == null || serverUrl.isBlank()) {
                 return FormValidation.error("Server URL is required");
             }
-            if (namespace == null || namespace.trim().isEmpty()) {
+            if (namespace == null || namespace.isBlank()) {
                 return FormValidation.error("Namespace is required");
             }
-            if (credentialsId == null || credentialsId.trim().isEmpty()) {
+            if (credentialsId == null || credentialsId.isBlank()) {
                 return FormValidation.error("Credentials are required");
             }
 
@@ -808,7 +852,7 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
                             StringCredentials.class,
                             Jenkins.get(),
                             ACL.SYSTEM2,
-                            Collections.<DomainRequirement>emptyList()
+                            Collections.emptyList()
                     ),
                     CredentialsMatchers.withId(credentialsId)
             );
@@ -822,7 +866,7 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
                                 StandardUsernamePasswordCredentials.class,
                                 Jenkins.get(),
                                 ACL.SYSTEM2,
-                                Collections.<DomainRequirement>emptyList()
+                                Collections.emptyList()
                         ),
                         CredentialsMatchers.withId(credentialsId)
                 );
@@ -832,7 +876,7 @@ public class KubeVirtCloud extends Cloud implements VMTemplateGroup {
                 }
             }
 
-            if (token == null || token.trim().isEmpty()) {
+            if (token == null || token.isBlank()) {
                 LOGGER.log(Level.SEVERE, "Test Connection failed: Credentials not found or token is empty for ID: {0}", credentialsId);
                 return FormValidation.error("Credentials not found or token is empty for ID: " + credentialsId);
             }

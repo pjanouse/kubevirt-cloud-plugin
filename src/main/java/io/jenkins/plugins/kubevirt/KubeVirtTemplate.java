@@ -27,13 +27,12 @@ package io.jenkins.plugins.kubevirt;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernameCredentials;
-import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 import edu.umd.cs.findbugs.annotations.NonNull;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.Extension;
 import hudson.Util;
 import hudson.model.Describable;
 import hudson.model.Descriptor;
+import hudson.DescriptorExtensionList;
 import hudson.model.ItemGroup;
 import hudson.model.Label;
 import hudson.model.Saveable;
@@ -45,6 +44,8 @@ import hudson.util.FormApply;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
 import jakarta.servlet.ServletException;
+import io.jenkins.plugins.kubevirt.disksource.ContainerDiskSource;
+import io.jenkins.plugins.kubevirt.disksource.KubeVirtDiskSource;
 import java.io.IOException;
 import java.util.Collections;
 import java.util.Set;
@@ -73,10 +74,19 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
     private String id;
     private final String name;
     private final String labelString;
-    private final String diskSourceType;
-    private final String image;
-    private final String dataSourceNamespace;
-    private final String dataSourceName;
+    private KubeVirtDiskSource diskSource;
+    /** @deprecated Legacy XML field; migrated in {@link #readResolve()}. */
+    @Deprecated
+    private String diskSourceType;
+    /** @deprecated Legacy XML field; migrated in {@link #readResolve()}. */
+    @Deprecated
+    private String image;
+    /** @deprecated Legacy XML field; migrated in {@link #readResolve()}. */
+    @Deprecated
+    private String dataSourceNamespace;
+    /** @deprecated Legacy XML field; migrated in {@link #readResolve()}. */
+    @Deprecated
+    private String dataSourceName;
     private final String diskSize;
     /** Kubernetes PVC access mode (ReadWriteOnce / ReadWriteMany), not a credential. */
     @SuppressWarnings("lgtm[jenkins/plaintext-storage]")
@@ -92,8 +102,6 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
     
     // SSH configuration
     private final String connectionType;
-    @SuppressFBWarnings(value = "PA_PASSWORD_SAVED_IN_PLAIN_TEXT",
-            justification = "Jenkins credentials identifier, not a password or secret value")
     private final String sshCredentialsId;
     private final int sshPort;
     private final String remoteFS;
@@ -126,10 +134,48 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
 
     private transient Set<LabelAtom> labelSet;
 
-    @DataBoundConstructor
     public KubeVirtTemplate(String id, String name, String labels, String diskSourceType,
                             String image, String dataSourceNamespace,
                             String dataSourceName, String diskSize,
+                            String accessMode,
+                            String cpu, String memory,
+                            String cpuLimit, String memoryLimit,
+                            String connectionType, String sshCredentialsId,
+                            String sshPort, String remoteFS, String javaPath,
+                            String cloudInitId, String idleMinutes,
+                            String instanceCap, String provisioningTimeoutMinutes,
+                            String maxProvisionAttempts,
+                            boolean injectTmpDiskConfig, String orphanGracePeriodMinutes,
+                            String cloudInitWaitSeconds) {
+        this(
+                id,
+                name,
+                labels,
+                KubeVirtDiskSource.fromLegacy(diskSourceType, image, dataSourceNamespace, dataSourceName),
+                diskSize,
+                accessMode,
+                cpu,
+                memory,
+                cpuLimit,
+                memoryLimit,
+                connectionType,
+                sshCredentialsId,
+                sshPort,
+                remoteFS,
+                javaPath,
+                cloudInitId,
+                idleMinutes,
+                instanceCap,
+                provisioningTimeoutMinutes,
+                maxProvisionAttempts,
+                injectTmpDiskConfig,
+                orphanGracePeriodMinutes,
+                cloudInitWaitSeconds);
+    }
+
+    @DataBoundConstructor
+    public KubeVirtTemplate(String id, String name, String labels, KubeVirtDiskSource diskSource,
+                            String diskSize,
                             String accessMode,
                             String cpu, String memory,
                             String cpuLimit, String memoryLimit,
@@ -144,11 +190,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         this.id = Util.fixEmpty(id) != null ? id : UUID.randomUUID().toString();
         this.name = name;
         this.labelString = labels;
-        this.diskSourceType = diskSourceType != null ? diskSourceType : KubeVirtConfiguration.DISK_SOURCE_CONTAINER_DISK;
-        this.image = image;
-        this.dataSourceNamespace = (dataSourceNamespace != null && !dataSourceNamespace.isEmpty())
-                ? dataSourceNamespace : KubeVirtConfiguration.DEFAULT_DATASOURCE_NAMESPACE;
-        this.dataSourceName = dataSourceName;
+        this.diskSource = diskSource != null ? diskSource : new ContainerDiskSource(null);
         this.diskSize = diskSize != null && !diskSize.isEmpty() ? diskSize : KubeVirtConfiguration.DEFAULT_DISK_SIZE;
         this.accessMode = accessMode != null && !accessMode.isEmpty() ? accessMode : KubeVirtConfiguration.ACCESS_MODE_RWX;
         this.cpu = (cpu != null && !cpu.isEmpty()) ? cpu : KubeVirtConfiguration.DEFAULT_CPU;
@@ -186,7 +228,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
 
         this.labelSet = Label.parse(labels);
     }
-    
+
     private static int parsePort(String port) {
         if (port == null || port.isEmpty()) {
             return KubeVirtConfiguration.DEFAULT_SSH_PORT;
@@ -218,7 +260,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
      * @return The parsed value, or default if empty/invalid. 0 means unlimited.
      */
     private static Integer parseInstanceCap(String instanceCap) {
-        if (instanceCap == null || instanceCap.trim().isEmpty()) {
+        if (instanceCap == null || instanceCap.isBlank()) {
             return KubeVirtConfiguration.DEFAULT_TEMPLATE_INSTANCE_CAP;
         }
         try {
@@ -251,7 +293,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
      *         or the default if empty/invalid. Values below {@code -1} are rejected.
      */
     private static Integer parseMaxProvisionAttempts(String maxProvisionAttempts) {
-        if (maxProvisionAttempts == null || maxProvisionAttempts.trim().isEmpty()) {
+        if (maxProvisionAttempts == null || maxProvisionAttempts.isBlank()) {
             return KubeVirtConfiguration.DEFAULT_MAX_PROVISION_ATTEMPTS;
         }
         try {
@@ -296,32 +338,42 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
         return labelString;
     }
 
+    public KubeVirtDiskSource getDiskSource() {
+        return diskSource;
+    }
+
     public String getDiskSourceType() {
-        return diskSourceType;
+        if (diskSource.isContainerDisk()) {
+            return KubeVirtConfiguration.DISK_SOURCE_CONTAINER_DISK;
+        }
+        if (diskSource.isDataSourceImport()) {
+            return KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE_IMPORT;
+        }
+        return KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE;
     }
 
     public boolean isContainerDisk() {
-        return KubeVirtConfiguration.DISK_SOURCE_CONTAINER_DISK.equals(diskSourceType);
+        return diskSource.isContainerDisk();
     }
 
     public boolean isDataSource() {
-        return KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE.equals(diskSourceType);
+        return diskSource.isDataSourceClone();
     }
 
     public boolean isDataSourceImport() {
-        return KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE_IMPORT.equals(diskSourceType);
+        return diskSource.isDataSourceImport();
     }
 
     public String getImage() {
-        return image;
+        return diskSource.getImage();
     }
 
     public String getDataSourceNamespace() {
-        return dataSourceNamespace;
+        return diskSource.getDataSourceNamespace();
     }
 
     public String getDataSourceName() {
-        return dataSourceName;
+        return diskSource.getDataSourceName();
     }
 
     public String getDiskSize() {
@@ -649,12 +701,12 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             return KubeVirtConfiguration.DEFAULT_CLOUD_INIT_WAIT_SECONDS;
         }
 
-        public ListBoxModel doFillDiskSourceTypeItems() {
-            ListBoxModel items = new ListBoxModel();
-            items.add("ContainerDisk", KubeVirtConfiguration.DISK_SOURCE_CONTAINER_DISK);
-            items.add("DataSource (Clone)", KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE);
-            items.add("DataSource (Import)", KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE_IMPORT);
-            return items;
+        public DescriptorExtensionList<KubeVirtDiskSource, Descriptor<KubeVirtDiskSource>> getDiskSourceDescriptors() {
+            return Jenkins.get().getDescriptorList(KubeVirtDiskSource.class);
+        }
+
+        public KubeVirtDiskSource getDefaultDiskSource() {
+            return new ContainerDiskSource(null);
         }
 
         public ListBoxModel doFillAccessModeItems() {
@@ -669,7 +721,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             if (!KubeVirtStaplerSecurity.canManage()) {
                 return FormValidation.ok();
             }
-            if (value == null || value.trim().isEmpty()) {
+            if (value == null || value.isBlank()) {
                 return FormValidation.error("Template Name is required. This will be used in the VM name.");
             }
             // Check for valid Kubernetes name characters
@@ -692,8 +744,8 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             if (context == null) {
                 context = Jenkins.get();
             }
-            if (context instanceof AccessControlled) {
-                if (!((AccessControlled) context).hasPermission(Jenkins.ADMINISTER)) {
+            if (context instanceof AccessControlled accessControlled) {
+                if (!accessControlled.hasPermission(Jenkins.ADMINISTER)) {
                     return new StandardListBoxModel().includeCurrentValue("");
                 }
             }
@@ -703,7 +755,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
                             ACL.SYSTEM2,
                             context,
                             StandardUsernameCredentials.class,
-                            Collections.<DomainRequirement>emptyList(),
+                            Collections.emptyList(),
                             CredentialsMatchers.always()
                     );
         }
@@ -713,7 +765,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             if (!KubeVirtStaplerSecurity.canManage()) {
                 return FormValidation.ok();
             }
-            if (value == null || value.trim().isEmpty()) {
+            if (value == null || value.isBlank()) {
                 return FormValidation.error("SSH Credentials are required to connect to the VM.");
             }
             return FormValidation.ok();
@@ -729,7 +781,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             if (!KubeVirtStaplerSecurity.canManage()) {
                 return FormValidation.ok();
             }
-            if (value == null || value.trim().isEmpty()) {
+            if (value == null || value.isBlank()) {
                 return FormValidation.error("CPU is required.");
             }
 
@@ -751,7 +803,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
                 }
 
                 // Cross-validate against limit if provided
-                if (cpuLimit != null && !cpuLimit.trim().isEmpty()) {
+                if (cpuLimit != null && !cpuLimit.isBlank()) {
                     try {
                         int limitMillicores = parseCpuToMillicores(cpuLimit.trim());
                         if (cpuMillicores > limitMillicores) {
@@ -780,7 +832,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             if (!KubeVirtStaplerSecurity.canManage()) {
                 return FormValidation.ok();
             }
-            if (value == null || value.trim().isEmpty()) {
+            if (value == null || value.isBlank()) {
                 return FormValidation.error("Memory is required.");
             }
 
@@ -803,7 +855,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
                 }
 
                 // Cross-validate against limit if provided
-                if (memoryLimit != null && !memoryLimit.trim().isEmpty()) {
+                if (memoryLimit != null && !memoryLimit.isBlank()) {
                     try {
                         long limitBytes = parseMemoryToBytes(memoryLimit.trim());
                         if (memoryBytes > limitBytes) {
@@ -831,7 +883,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             if (!KubeVirtStaplerSecurity.canManage()) {
                 return FormValidation.ok();
             }
-            if (value == null || value.trim().isEmpty()) {
+            if (value == null || value.isBlank()) {
                 return FormValidation.ok("No limit set (VM can use all available CPU)");
             }
 
@@ -848,7 +900,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
                 int limitMillicores = parseCpuToMillicores(cpuLimit);
 
                 // Cross-validate against reserved CPU if provided
-                if (cpu != null && !cpu.trim().isEmpty()) {
+                if (cpu != null && !cpu.isBlank()) {
                     try {
                         int reservedMillicores = parseCpuToMillicores(cpu.trim());
                         if (limitMillicores < reservedMillicores) {
@@ -877,7 +929,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             if (!KubeVirtStaplerSecurity.canManage()) {
                 return FormValidation.ok();
             }
-            if (value == null || value.trim().isEmpty()) {
+            if (value == null || value.isBlank()) {
                 return FormValidation.ok("No limit set (VM can use all available memory)");
             }
 
@@ -894,7 +946,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
                 long limitBytes = parseMemoryToBytes(memoryLimit);
 
                 // Cross-validate against reserved memory if provided
-                if (memory != null && !memory.trim().isEmpty()) {
+                if (memory != null && !memory.isBlank()) {
                     try {
                         long reservedBytes = parseMemoryToBytes(memory.trim());
                         if (limitBytes < reservedBytes) {
@@ -959,7 +1011,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             if (!KubeVirtStaplerSecurity.canManage()) {
                 return FormValidation.ok();
             }
-            if (value == null || value.trim().isEmpty()) {
+            if (value == null || value.isBlank()) {
                 // Will use default, so this is OK
                 return FormValidation.ok("Will use default: " + KubeVirtConfiguration.DEFAULT_DISK_SIZE);
             }
@@ -996,7 +1048,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             if (!KubeVirtStaplerSecurity.canManage()) {
                 return FormValidation.ok();
             }
-            if (value == null || value.trim().isEmpty()) {
+            if (value == null || value.isBlank()) {
                 return FormValidation.ok("Will use default port: " + KubeVirtConfiguration.DEFAULT_SSH_PORT);
             }
 
@@ -1023,7 +1075,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             if (!KubeVirtStaplerSecurity.canManage()) {
                 return FormValidation.ok();
             }
-            if (value == null || value.trim().isEmpty()) {
+            if (value == null || value.isBlank()) {
                 return FormValidation.ok("Will use default: " + KubeVirtConfiguration.DEFAULT_REMOTE_FS);
             }
 
@@ -1035,104 +1087,6 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             return FormValidation.ok();
         }
 
-        /**
-         * Validates the Container Disk Image field.
-         */
-        @POST
-        public FormValidation doCheckImage(@QueryParameter String value,
-                                           @QueryParameter String diskSourceType) {
-            if (!KubeVirtStaplerSecurity.canManage()) {
-                return FormValidation.ok();
-            }            // Only required for ContainerDisk and DataSource Import
-            if (!KubeVirtConfiguration.DISK_SOURCE_CONTAINER_DISK.equals(diskSourceType)
-                    && !KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE_IMPORT.equals(diskSourceType)) {
-                return FormValidation.ok();
-            }
-
-            if (value == null || value.trim().isEmpty()) {
-                return FormValidation.error("Container disk image is required for " +
-                        (KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE_IMPORT.equals(diskSourceType)
-                                ? "DataSource (Import)" : "ContainerDisk") + " source type.");
-            }
-
-            String image = value.trim();
-            // Basic image format validation
-            if (!image.matches("^[a-zA-Z0-9][a-zA-Z0-9._/-]*(:[a-zA-Z0-9._-]+)?(@sha256:[a-f0-9]+)?$")) {
-                return FormValidation.warning(
-                        "Image format may be invalid. Expected format: registry/image:tag or registry/image@sha256:digest");
-            }
-
-            return FormValidation.ok();
-        }
-
-        /**
-         * Validates the DataSource Name field.
-         */
-        @POST
-        public FormValidation doCheckDataSourceName(@QueryParameter String value,
-                                                     @QueryParameter String diskSourceType) {
-            if (!KubeVirtStaplerSecurity.canManage()) {
-                return FormValidation.ok();
-            }            // Required for DataSource (Clone) and DataSource (Import)
-            if (!KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE.equals(diskSourceType)
-                    && !KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE_IMPORT.equals(diskSourceType)) {
-                return FormValidation.ok();
-            }
-
-            if (value == null || value.trim().isEmpty()) {
-                return FormValidation.error("DataSource name is required for " +
-                        (KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE_IMPORT.equals(diskSourceType)
-                                ? "DataSource (Import)" : "DataSource (Clone)") + " source type.");
-            }
-
-            // Validate RFC 1123 DNS subdomain name
-            String name = value.trim();
-            if (!name.matches("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")) {
-                return FormValidation.error(
-                        "DataSource name must be a valid Kubernetes name (lowercase, alphanumeric, hyphens).");
-            }
-
-            if (name.length() > 253) {
-                return FormValidation.error("DataSource name must be 253 characters or less.");
-            }
-
-            return FormValidation.ok();
-        }
-
-        /**
-         * Validates the DataSource Namespace field.
-         */
-        @POST
-        public FormValidation doCheckDataSourceNamespace(@QueryParameter String value,
-                                                          @QueryParameter String diskSourceType) {
-            if (!KubeVirtStaplerSecurity.canManage()) {
-                return FormValidation.ok();
-            }            // Required for DataSource (Clone) and DataSource (Import)
-            if (!KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE.equals(diskSourceType)
-                    && !KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE_IMPORT.equals(diskSourceType)) {
-                return FormValidation.ok();
-            }
-
-            if (value == null || value.trim().isEmpty()) {
-                return FormValidation.error("DataSource namespace is required for " +
-                        (KubeVirtConfiguration.DISK_SOURCE_DATA_SOURCE_IMPORT.equals(diskSourceType)
-                                ? "DataSource (Import)" : "DataSource (Clone)") + " source type.");
-            }
-
-            // Validate RFC 1123 DNS label
-            String namespace = value.trim();
-            if (!namespace.matches("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$")) {
-                return FormValidation.error(
-                        "Namespace must be a valid Kubernetes namespace (lowercase, alphanumeric, hyphens).");
-            }
-
-            if (namespace.length() > 63) {
-                return FormValidation.error("Namespace must be 63 characters or less.");
-            }
-
-            return FormValidation.ok();
-        }
-        
         /**
          * Populates the cloud-init config dropdown with available configs.
          */
@@ -1209,7 +1163,7 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
             if (!KubeVirtStaplerSecurity.canManage()) {
                 return FormValidation.ok();
             }
-            if (value == null || value.trim().isEmpty()) {
+            if (value == null || value.isBlank()) {
                 return FormValidation.ok("Will use default: " + KubeVirtConfiguration.DEFAULT_TEMPLATE_INSTANCE_CAP);
             }
             try {
@@ -1348,6 +1302,9 @@ public class KubeVirtTemplate implements Describable<KubeVirtTemplate>, Saveable
     private static final java.util.logging.Logger LOGGER = java.util.logging.Logger.getLogger(KubeVirtTemplate.class.getName());
 
     protected Object readResolve() {
+        if (diskSource == null) {
+            diskSource = KubeVirtDiskSource.fromLegacy(diskSourceType, image, dataSourceNamespace, dataSourceName);
+        }
         labelSet = Label.parse(labelString);
         // Initialize ID for templates that were created before ID was added
         if (id == null) {

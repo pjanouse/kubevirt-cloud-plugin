@@ -33,9 +33,6 @@ import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
 
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -55,7 +52,7 @@ class QueueUtilsTest {
     String reason = "KubeVirt provisioning failed 3 consecutive time(s) for template 'test' (labels 'kubevirt-test-label', limit: 3)";
     QueueUtils.writeProvisioningFailureToBuildLog(build, reason);
 
-    String log = Files.readString(build.getLogFile().toPath(), StandardCharsets.UTF_8);
+    String log = String.join("\n", build.getLog(1000));
     assertTrue(log.contains("[KubeVirt] ERROR: " + reason + ". Build cancelled."));
   }
 

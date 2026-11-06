@@ -1,28 +1,4 @@
 /* The MIT License — see source repository for full text. */
-.disk-source-options {
-    margin-left: 30px;
-    padding-left: 15px;
-    border-left: 2px solid #ccc;
-}
-
-.disk-source-options .data-source-fields {
-    display: none;
-}
-
-.disk-source-options[data-disk-source="dataSource"] .data-source-fields,
-.disk-source-options[data-disk-source="dataSourceImport"] .data-source-fields {
-    display: block;
-}
-
-.disk-source-options .image-field {
-    display: none;
-}
-
-.disk-source-options[data-disk-source="containerDisk"] .image-field,
-.disk-source-options[data-disk-source="dataSourceImport"] .image-field {
-    display: block;
-}
-
 .resource-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -33,6 +9,7 @@
     padding: 10px;
     background: #f8f9fa;
     border-radius: 4px;
+    margin-bottom: var(--section-padding);
 }
 
 .resource-column h4 {

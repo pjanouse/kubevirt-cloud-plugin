@@ -35,7 +35,10 @@ import hudson.util.StreamTaskListener;
 import jenkins.model.Jenkins;
 
 import java.io.IOException;
+import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardOpenOption;
 import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -130,8 +133,11 @@ public final class QueueUtils {
         }
 
         String message = reason + ". Build cancelled.";
-        try (StreamTaskListener listener = new StreamTaskListener(
-                run.getLogFile(), true, StandardCharsets.UTF_8)) {
+        try (OutputStream logOut = Files.newOutputStream(
+                run.getRootDir().toPath().resolve("log"),
+                StandardOpenOption.CREATE,
+                StandardOpenOption.APPEND);
+             StreamTaskListener listener = new StreamTaskListener(logOut, StandardCharsets.UTF_8)) {
             KubeVirtLog.error(listener, message);
         } catch (IOException e) {
             LOGGER.log(Level.WARNING, "Failed to write provisioning failure to build log for {0}: {1}",

@@ -310,8 +310,7 @@ public class KubeVirtAgent extends AbstractCloudSlave implements TrackedItem {
         
         // First, ensure the computer is disconnected gracefully
         // This gives the SSH channel time to close cleanly before we delete the VM
-        KubeVirtComputer computer = (KubeVirtComputer) toComputer();
-        if (computer != null && computer.isOnline()) {
+        if (toComputer() instanceof KubeVirtComputer computer && computer.isOnline()) {
             KubeVirtLog.log(listener.getLogger(), "Disconnecting agent before VM deletion...");
             OfflineCause cause = getOfflineCause(reason);
             computer.disconnect(cause);
@@ -325,8 +324,7 @@ public class KubeVirtAgent extends AbstractCloudSlave implements TrackedItem {
         }
         
         try {
-            KubeVirtCloud cloud = (KubeVirtCloud) jenkins.model.Jenkins.get().getCloud(cloudName);
-            if (cloud != null) {
+            if (jenkins.model.Jenkins.get().getCloud(cloudName) instanceof KubeVirtCloud cloud) {
                 cloud.deleteVM(getNodeName(), templateName);
                 KubeVirtLog.log(listener.getLogger(), "VM terminated successfully.");
             } else {

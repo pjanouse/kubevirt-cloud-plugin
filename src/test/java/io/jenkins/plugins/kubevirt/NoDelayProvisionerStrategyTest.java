@@ -31,6 +31,7 @@ import hudson.model.Node;
 import hudson.model.queue.QueueListener;
 import hudson.slaves.Cloud;
 import hudson.slaves.NodeProvisioner;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.jvnet.hudson.test.JenkinsRule;
@@ -53,10 +54,21 @@ import static org.mockito.Mockito.*;
 public class NoDelayProvisionerStrategyTest {
 
     private JenkinsRule jenkins;
+    private boolean savedDisableCloudRotation;
 
     @BeforeEach
     void setUp(JenkinsRule jenkins) {
         this.jenkins = jenkins;
+        savedDisableCloudRotation = NoDelayProvisionerStrategy.DISABLE_CLOUD_ROTATION;
+        NoDelayProvisionerStrategy.DISABLE_CLOUD_ROTATION = false;
+        NoDelayProvisionerStrategy.resetCloudRotationForTesting();
+        OrderTrackingKubeVirtCloud.PROVISION_ORDER.clear();
+    }
+
+    @AfterEach
+    void tearDown() {
+        NoDelayProvisionerStrategy.DISABLE_CLOUD_ROTATION = savedDisableCloudRotation;
+        NoDelayProvisionerStrategy.resetCloudRotationForTesting();
     }
 
     // ==================== Extension Registration ====================
@@ -263,6 +275,51 @@ public class NoDelayProvisionerStrategyTest {
 
         assertEquals(NodeProvisioner.StrategyDecision.CONSULT_REMAINING_STRATEGIES, decision,
                 "Should defer when KubeVirtCloud can't provision the requested label");
+    }
+
+    // ==================== Strategy: Multi-cloud round-robin ====================
+
+    /**
+     * With multiple KubeVirt clouds, each provisioning attempt should start with the next
+     * cloud in Jenkins list order (round-robin), not always the first cloud.
+     */
+    @Test
+    void multipleClouds_roundRobinRotatesStartingCloud() {
+        jenkins.jenkins.clouds.clear();
+        jenkins.jenkins.clouds.add(new OrderTrackingKubeVirtCloud("cloud-a"));
+        jenkins.jenkins.clouds.add(new OrderTrackingKubeVirtCloud("cloud-b"));
+
+        NoDelayProvisionerStrategy strategy = new NoDelayProvisionerStrategy();
+
+        NodeProvisioner.StrategyState state1 = mockStrategyState(
+                null, 1, 0, 0, 0);
+        strategy.apply(state1);
+
+        NodeProvisioner.StrategyState state2 = mockStrategyState(
+                null, 1, 0, 0, 0);
+        strategy.apply(state2);
+
+        assertEquals(List.of("cloud-a", "cloud-b"), OrderTrackingKubeVirtCloud.PROVISION_ORDER,
+                "Second provisioning attempt should start with the next cloud in list order");
+    }
+
+    /**
+     * When cloud rotation is disabled, clouds are always tried in Jenkins list order.
+     */
+    @Test
+    void multipleClouds_rotationDisabled_alwaysUsesListOrder() {
+        NoDelayProvisionerStrategy.DISABLE_CLOUD_ROTATION = true;
+        jenkins.jenkins.clouds.clear();
+        jenkins.jenkins.clouds.add(new OrderTrackingKubeVirtCloud("cloud-a"));
+        jenkins.jenkins.clouds.add(new OrderTrackingKubeVirtCloud("cloud-b"));
+
+        NoDelayProvisionerStrategy strategy = new NoDelayProvisionerStrategy();
+
+        for (int i = 0; i < 2; i++) {
+            strategy.apply(mockStrategyState(null, 1, 0, 0, 0));
+        }
+
+        assertEquals(List.of("cloud-a", "cloud-a"), OrderTrackingKubeVirtCloud.PROVISION_ORDER);
     }
 
     // ==================== Strategy: Provisioning Path ====================
@@ -520,6 +577,30 @@ public class NoDelayProvisionerStrategyTest {
      * A {@link KubeVirtCloud} subclass whose {@code provision()} method always
      * throws a {@link RuntimeException}, used to test exception safety.
      */
+    /**
+     * Records cloud names in {@link #PROVISION_ORDER} whenever {@code provision()} runs.
+     */
+    private static class OrderTrackingKubeVirtCloud extends KubeVirtCloud {
+        static final List<String> PROVISION_ORDER = new ArrayList<>();
+
+        OrderTrackingKubeVirtCloud(String name) {
+            super(name, "https://fake:6443", "creds", "default",
+                    true, "10", false, Collections.emptyList());
+        }
+
+        @Override
+        public boolean canProvision(CloudState state) {
+            return true;
+        }
+
+        @Override
+        public Collection<NodeProvisioner.PlannedNode> provision(CloudState state, int excessWorkload) {
+            PROVISION_ORDER.add(name);
+            return List.of(new NodeProvisioner.PlannedNode(
+                    name + "-node", new CompletableFuture<>(), 1));
+        }
+    }
+
     private static class ThrowingKubeVirtCloud extends KubeVirtCloud {
         ThrowingKubeVirtCloud(String name) {
             super(name, "https://fake:6443", "creds", "default",

@@ -27,6 +27,7 @@ package io.jenkins.plugins.kubevirt;
 import hudson.model.TaskListener;
 import hudson.plugins.sshslaves.SSHLauncher;
 import hudson.plugins.sshslaves.verifiers.NonVerifyingKeyVerificationStrategy;
+import hudson.model.Node;
 import hudson.slaves.Cloud;
 import hudson.slaves.ComputerLauncher;
 import hudson.slaves.SlaveComputer;
@@ -133,8 +134,12 @@ public class VirtctlPortForwardLauncher extends ComputerLauncher {
         if (cloudName != null) {
             return cloudName;
         }
-        if (computer != null && computer.getNode() instanceof KubeVirtAgent) {
-            String agentCloudName = ((KubeVirtAgent) computer.getNode()).getCloudName();
+        if (computer != null) {
+            Node node = computer.getNode();
+            if (!(node instanceof KubeVirtAgent agent)) {
+                return null;
+            }
+            String agentCloudName = agent.getCloudName();
             LOGGER.log(Level.FINE, "Launcher for VM {0} has no cloudName (upgraded from older plugin version), "
                     + "falling back to agent cloud name: {1}", new Object[]{vmName, agentCloudName});
             return agentCloudName;
@@ -149,11 +154,10 @@ public class VirtctlPortForwardLauncher extends ComputerLauncher {
                     + "incompatible plugin version.");
         }
         Cloud cloud = Jenkins.get().getCloud(effectiveCloudName);
-        if (!(cloud instanceof KubeVirtCloud)) {
+        if (!(cloud instanceof KubeVirtCloud kubeVirtCloud)) {
             throw new IOException("KubeVirt cloud '" + effectiveCloudName
                     + "' not found. It may have been deleted or renamed.");
         }
-        KubeVirtCloud kubeVirtCloud = (KubeVirtCloud) cloud;
         String credentialsId = kubeVirtCloud.getCredentialsId();
         try {
             return new KubeVirtClientFactory().lookupToken(credentialsId);
@@ -178,15 +182,14 @@ public class VirtctlPortForwardLauncher extends ComputerLauncher {
             throw e;
         }
 
-        if (oauthToken == null || oauthToken.isEmpty()) {
-            KubeVirtLog.error(listener, "ERROR: Kubernetes token is null or empty! Tunnel will fail.");
-            LOGGER.log(Level.SEVERE, "Kubernetes token is null or empty for VM {0}", vmName);
+        if (oauthToken.isEmpty()) {
+            KubeVirtLog.error(listener, "ERROR: Kubernetes token is empty! Tunnel will fail.");
+            LOGGER.log(Level.SEVERE, "Kubernetes token is empty for VM {0}", vmName);
         } else {
             KubeVirtLog.log(log, "Kubernetes API credentials resolved for port-forward tunnel");
         }
 
-        Secret runtimeToken = oauthToken != null && !oauthToken.isEmpty()
-                ? Secret.fromString(oauthToken) : null;
+        Secret runtimeToken = oauthToken.isEmpty() ? null : Secret.fromString(oauthToken);
         try {
             // Create Kubernetes client (used only for VMI validation)
             Config config = new ConfigBuilder()

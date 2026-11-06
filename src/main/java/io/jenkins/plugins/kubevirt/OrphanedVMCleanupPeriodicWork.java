@@ -229,11 +229,8 @@ public class OrphanedVMCleanupPeriodicWork extends AsyncPeriodicWork {
         Jenkins jenkins = Jenkins.get();
 
         for (Node node : jenkins.getNodes()) {
-            if (node instanceof KubeVirtAgent) {
-                KubeVirtAgent agent = (KubeVirtAgent) node;
-                if (cloudName.equals(agent.getCloudName())) {
-                    agentNames.add(agent.getNodeName());
-                }
+            if (node instanceof KubeVirtAgent agent && cloudName.equals(agent.getCloudName())) {
+                agentNames.add(agent.getNodeName());
             }
         }
 

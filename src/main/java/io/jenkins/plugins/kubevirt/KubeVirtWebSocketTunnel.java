@@ -24,6 +24,7 @@
 
 package io.jenkins.plugins.kubevirt;
 
+import hudson.ProxyConfiguration;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
@@ -57,7 +58,6 @@ import javax.net.ssl.X509TrustManager;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.util.Secret;
 
 /**
@@ -509,13 +509,16 @@ public class KubeVirtWebSocketTunnel implements Closeable {
      * within a single tunnel instance, avoiding the overhead of creating a new
      * thread pool and connection pool per connection.
      *
+     * <p>Uses {@link ProxyConfiguration#newHttpClientBuilder()} so outbound HTTPS
+     * to the Kubernetes API respects the Jenkins controller HTTP proxy settings.</p>
+     *
      * @param ignoreSsl Whether to skip TLS certificate verification
      * @return A configured HttpClient instance
      * @throws IOException If the SSL context cannot be created
      */
     @SuppressWarnings("lgtm[jenkins/unsafe-calls]")
     private static HttpClient buildHttpClient(boolean ignoreSsl) throws IOException {
-        HttpClient.Builder builder = HttpClient.newBuilder()
+        HttpClient.Builder builder = ProxyConfiguration.newHttpClientBuilder()
                 .connectTimeout(java.time.Duration.ofSeconds(
                         KubeVirtConfiguration.WS_CONNECT_TIMEOUT_SECONDS));
 
@@ -633,22 +636,16 @@ public class KubeVirtWebSocketTunnel implements Closeable {
     @SuppressWarnings("java:S4830") // Intentionally trusting all certs when configured
     private static class TrustAllCertsManager implements X509TrustManager {
         @Override
-        @SuppressFBWarnings(value = "WEAK_TRUST_MANAGER",
-                justification = "Used only when the cloud administrator explicitly enables ignoreSsl")
         public void checkClientTrusted(X509Certificate[] chain, String authType) {
             // Trust all
         }
 
         @Override
-        @SuppressFBWarnings(value = "WEAK_TRUST_MANAGER",
-                justification = "Used only when the cloud administrator explicitly enables ignoreSsl")
         public void checkServerTrusted(X509Certificate[] chain, String authType) {
             // Trust all
         }
 
         @Override
-        @SuppressFBWarnings(value = "WEAK_TRUST_MANAGER",
-                justification = "Used only when the cloud administrator explicitly enables ignoreSsl")
         public X509Certificate[] getAcceptedIssuers() {
             return new X509Certificate[0];
         }

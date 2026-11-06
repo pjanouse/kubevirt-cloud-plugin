@@ -713,14 +713,14 @@ public class KubeVirt implements AutoCloseable {
         resources.put("requests", requests);
         
         // Limits (maximum resources) - only add if specified
-        boolean hasLimits = (cpuLimit != null && !cpuLimit.trim().isEmpty()) 
-                         || (memoryLimit != null && !memoryLimit.trim().isEmpty());
+        boolean hasLimits = (cpuLimit != null && !cpuLimit.isBlank())
+                         || (memoryLimit != null && !memoryLimit.isBlank());
         if (hasLimits) {
             Map<String, Object> limits = new HashMap<>();
-            if (cpuLimit != null && !cpuLimit.trim().isEmpty()) {
+            if (cpuLimit != null && !cpuLimit.isBlank()) {
                 limits.put("cpu", cpuLimit.trim());
             }
-            if (memoryLimit != null && !memoryLimit.trim().isEmpty()) {
+            if (memoryLimit != null && !memoryLimit.isBlank()) {
                 limits.put("memory", memoryLimit.trim());
             }
             resources.put("limits", limits);
