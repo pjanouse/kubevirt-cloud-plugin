@@ -35,32 +35,9 @@ THE SOFTWARE.
         <f:textbox />
     </f:entry>
 
-    <!-- Disk source type and dependent fields (visibility toggled via config.js adjunct) -->
-    <div class="disk-source-options"
-         data-disk-source="${empty(instance.diskSourceType) ? 'containerDisk' : instance.diskSourceType}">
-        <f:entry title="Disk Source Type" field="diskSourceType"
-                 description="ContainerDisk: imports a container disk image directly into a DataVolume for each VM. DataSource (Clone): clones from a pre-existing DataSource in the cluster. DataSource (Import): imports a container image into a DataSource (cached), then clones from it for each VM — faster provisioning after the first import.">
-            <f:select />
-        </f:entry>
-        <!-- DataSource Namespace + Name: shown for dataSource and dataSourceImport -->
-        <div class="data-source-fields">
-            <f:entry title="DataSource Namespace" field="dataSourceNamespace"
-                     description="Kubernetes namespace where the DataSource resides (for Clone) or will be created (for Import).">
-                <f:textbox default="${descriptor.defaultDataSourceNamespace}" />
-            </f:entry>
-            <f:entry title="DataSource Name" field="dataSourceName"
-                     description="Name of the DataSource to clone from (for Clone) or to create (for Import).">
-                <f:textbox />
-            </f:entry>
-        </div>
-        <!-- Image: shown for containerDisk and dataSourceImport -->
-        <div class="image-field">
-            <f:entry title="Image" field="image"
-                     description="Container disk image URL (e.g., quay.io/containerdisks/fedora:40). For ContainerDisk, imported directly into a DataVolume per VM. For DataSource (Import), imported once into a DataSource and cached for subsequent VMs.">
-                <f:textbox />
-            </f:entry>
-        </div>
-    </div>
+    <f:dropdownDescriptorSelector field="diskSource" title="Disk Source"
+        descriptors="${descriptor.diskSourceDescriptors}"
+        default="${descriptor.defaultDiskSource.descriptor}" />
 
     <f:entry title="Disk Size" field="diskSize">
         <f:textbox default="${descriptor.defaultDiskSize}" />
@@ -160,5 +137,5 @@ THE SOFTWARE.
         </f:entry>
     </f:section>
 
-    <st:adjunct includes="io.jenkins.plugins.kubevirt.KubeVirtTemplate.config"/>
+    <st:adjunct includes="io.jenkins.plugins.kubevirt.KubeVirtTemplate.template-form"/>
 </j:jelly>

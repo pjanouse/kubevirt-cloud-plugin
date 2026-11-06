@@ -58,11 +58,10 @@ public class KubeVirtRunListener extends RunListener<AbstractBuild<?, ?>> {
             }
 
             Computer computer = executor.getOwner();
-            if (!(computer instanceof KubeVirtComputer)) {
+            if (!(computer instanceof KubeVirtComputer kvc)) {
                 return;
             }
 
-            KubeVirtComputer kvc = (KubeVirtComputer) computer;
             KubeVirtAgent agent = kvc.getNode();
 
             if (agent == null) {
@@ -87,7 +86,7 @@ public class KubeVirtRunListener extends RunListener<AbstractBuild<?, ?>> {
             listener.getLogger().println("╠════════════════════════════════════════════════════════════════════════════╣");
 
             for (String line : provisioningInfo.split("\n")) {
-                if (!line.trim().isEmpty()) {
+                if (!line.isBlank()) {
                     listener.getLogger().println("║ " + padRight(line, 75) + "║");
                 }
             }

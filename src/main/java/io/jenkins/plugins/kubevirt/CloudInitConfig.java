@@ -80,12 +80,12 @@ public class CloudInitConfig extends Config {
             throw new IllegalArgumentException(
                 "Unable to locate KubeVirt cloud-init config: '" + cloudInitId + "'");
         }
-        if (!(config instanceof CloudInitConfig)) {
+        if (!(config instanceof CloudInitConfig cloudInitConfig)) {
             throw new IllegalArgumentException(
                 "Config file is not of correct type (expected CloudInitConfig): " + config.getClass());
         }
 
-        return config.content.isEmpty() ? null : config.content;
+        return cloudInitConfig.content.isEmpty() ? null : cloudInitConfig.content;
     }
 
     /**

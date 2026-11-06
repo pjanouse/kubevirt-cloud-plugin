@@ -43,17 +43,19 @@ THE SOFTWARE.
                         </a>
                     </j:if>
                 </l:app-bar>
-                <table id="templates" class="jenkins-table sortable">
+                <div class="jenkins-!-margin-bottom-2">${%Templates are provisioned in list order when labels overlap.}</div>
+                <table id="templates" class="jenkins-table">
                     <thead>
                     <tr>
-                        <th initialSortDir="down">${%Name}</th>
+                        <th>${%Name}</th>
                         <th>${%Labels}</th>
                         <th>${%Disk Source}</th>
+                        <th class="jenkins-table__cell--tight">${%Order}</th>
                         <th class="jenkins-table__cell--tight"/>
                     </tr>
                     </thead>
                     <tbody>
-                    <j:forEach var="template" items="${it.templates}">
+                    <j:forEach var="template" items="${it.templates}" varStatus="st">
                         <tr id="template_${template.id}">
                         <td>
                             <a href="template/${template.id}" class="jenkins-table__link">${template.name}</a>
@@ -64,14 +66,27 @@ THE SOFTWARE.
                             </j:if>
                         </td>
                         <td>
-                            <j:choose>
-                                <j:when test="${template.containerDisk}">
-                                    ContainerDisk
-                                </j:when>
-                                <j:otherwise>
-                                    DataSource
-                                </j:otherwise>
-                            </j:choose>
+                            ${template.diskSource.descriptor.displayName}
+                        </td>
+                        <td class="jenkins-table__cell--tight">
+                            <j:if test="${it.hasManagePermission()}">
+                                <div class="jenkins-table__cell__button-wrapper">
+                                    <j:if test="${st.index > 0}">
+                                        <f:link href="moveTemplateUp?templateId=${template.id}" post="true"
+                                                class="jenkins-button jenkins-button--tertiary jenkins-!-padding-0"
+                                                title="${%Move up}">
+                                            <l:icon src="symbol-chevron-up"/>
+                                        </f:link>
+                                    </j:if>
+                                    <j:if test="${st.index lt (it.templates.size() - 1)}">
+                                        <f:link href="moveTemplateDown?templateId=${template.id}" post="true"
+                                                class="jenkins-button jenkins-button--tertiary jenkins-!-padding-0"
+                                                title="${%Move down}">
+                                            <l:icon src="symbol-chevron-down"/>
+                                        </f:link>
+                                    </j:if>
+                                </div>
+                            </j:if>
                         </td>
                         <td class="jenkins-table__cell--tight">
                             <div class="jenkins-table__cell__button-wrapper">

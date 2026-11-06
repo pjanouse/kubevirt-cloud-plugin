@@ -17,6 +17,7 @@ Agents connect to the Jenkins controller via SSH after the VM boots and cloud-in
   - [Cloud Configuration](#cloud-configuration)
   - [Template Configuration](#template-configuration)
   - [Cloud-Init Configuration](#cloud-init-configuration)
+- [Provisioning Behavior](#provisioning-behavior)
 - [Usage](#usage)
   - [Using Labels](#using-labels)
   - [Pipeline Example](#pipeline-example)
@@ -158,6 +159,51 @@ packages:
 ```
 
 > **Note:** The SSH public key in cloud-init must match the private key configured in the SSH credentials for the template.
+
+## Provisioning Behavior
+
+This plugin uses a custom **No-Delay Provisioner Strategy** so that VM provisioning starts as soon as a buildable item enters the queue, instead of waiting for Jenkins' default periodic `NodeProvisioner` cycle. A **Fast Provisioning** queue listener wakes the provisioner immediately when a `KubeVirtCloud` can serve the requested label.
+
+### Cloud order (multiple KubeVirt clouds)
+
+If you configure more than one **KubeVirt / OpenShift Virtualization** cloud under **Manage Jenkins → Clouds**, the strategy distributes work using **round-robin** over the KubeVirt clouds **in the order they appear in that list** (top to bottom). Each new provisioning attempt advances the starting cloud. Non-KubeVirt clouds (EC2, Kubernetes, etc.) are ignored for this rotation; the plugin only round-robins among `KubeVirtCloud` entries.
+
+Round-robin is a **load-balancing tendency**, not a strict guarantee that VMs are created one-per-cloud in lockstep. Many real-world conditions change which cloud actually provisions:
+
+| Situation | Effect |
+|-----------|--------|
+| **VM Count Cap** or **Instance Cap** reached | That cloud or template is skipped; the next cloud in the rotation may provision instead. |
+| **Cap set to `0`** | Means **unlimited** concurrent VMs for that scope—not “disable provisioning”. |
+| **Label does not match** any template in a cloud | `canProvision()` is false for that cloud; it is skipped. |
+| **Cluster unreachable** or API errors | Provisioning from that cloud fails or returns nothing; other clouds may be tried in the same attempt. |
+| **Several queued builds at once** | One strategy pass may plan multiple agents from the same cloud until demand is met. |
+| **Agents still connecting** | Connecting executors count toward capacity so the strategy does not over-provision during SSH setup. |
+| **Partial satisfaction** | If KubeVirt clouds cannot satisfy all demand, remaining strategies may provision elsewhere. |
+| **Only one KubeVirt cloud** | Rotation has no effect; template order within the cloud applies (see below). |
+
+To always try clouds in fixed Jenkins list order (no rotation), set at JVM startup:
+
+```text
+-DNoDelayProvisionerStrategy.disableCloudRotation=true
+```
+
+Or in the **Script Console** (no restart): `NoDelayProvisionerStrategy.DISABLE_CLOUD_ROTATION = true`
+
+The older property `NoDelayProvisionerStrategy.disableCloudShuffle` is still accepted and has the same effect.
+
+### Template order (within one cloud)
+
+Inside each cloud, `provision()` walks **VM templates in list order** (use the up/down controls in the cloud configuration UI). The first template that matches the label and has capacity is used; if it cannot satisfy all demand, later templates in the list may be used in the same call according to the same rules.
+
+### Disabling no-delay provisioning
+
+To fall back to Jenkins' default provisioner behavior for all clouds (not only KubeVirt):
+
+```text
+-Dio.jenkins.plugins.kubevirt.disableNoDelayProvisioning=true
+```
+
+Or: `NoDelayProvisionerStrategy.DISABLE_NO_DELAY = true` in the Script Console.
 
 # Usage
 
@@ -403,7 +449,6 @@ mvn test
 ## IDE Setup
 
 Import as a Maven project. The plugin uses:
-- Java 17+
 - Fabric8 Kubernetes Client for Kubernetes/KubeVirt API access
 - Jenkins Plugin parent POM for build configuration
 

@@ -24,6 +24,7 @@
 
 package io.jenkins.plugins.kubevirt;
 
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.Extension;
 import hudson.model.Label;
 import hudson.model.LoadStatistics;
@@ -37,8 +38,8 @@ import jenkins.util.Timer;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -62,22 +63,43 @@ import java.util.logging.Logger;
  * which wakes up the {@code NodeProvisioner} the instant a buildable item enters the
  * queue, converting Jenkins' periodic polling model into an event-driven one.</p>
  *
- * <p>Can be disabled via system property:</p>
+ * <p>Can be disabled via system property at JVM startup:</p>
  * <pre>-Dio.jenkins.plugins.kubevirt.disableNoDelayProvisioning=true</pre>
+ * <p>or at runtime in the script console (no restart):</p>
+ * <pre>io.jenkins.plugins.kubevirt.NoDelayProvisionerStrategy.DISABLE_NO_DELAY = true</pre>
  *
- * <p>Cloud shuffling (for multiple KubeVirtCloud configs) can be disabled via:</p>
- * <pre>-DNoDelayProvisionerStrategy.disableCloudShuffle=true</pre>
+ * <p>When several {@link KubeVirtCloud} instances are configured, this strategy visits them in
+ * round-robin order (see plugin README). Rotation can be disabled to always use Jenkins cloud
+ * list order:</p>
+ * <pre>-DNoDelayProvisionerStrategy.disableCloudRotation=true</pre>
+ * <p>or {@code NoDelayProvisionerStrategy.DISABLE_CLOUD_ROTATION = true} in the script console.
+ * The legacy property {@code NoDelayProvisionerStrategy.disableCloudShuffle} is still honored.</p>
  */
 @Extension(ordinal = 100)
 public class NoDelayProvisionerStrategy extends NodeProvisioner.Strategy {
 
     private static final Logger LOGGER = Logger.getLogger(NoDelayProvisionerStrategy.class.getName());
 
-    private static final boolean DISABLE_NO_DELAY =
+    @SuppressFBWarnings(value = "MS_SHOULD_BE_FINAL",
+            justification = "Mutable for runtime tuning via Jenkins script console without JVM restart")
+    public static boolean DISABLE_NO_DELAY =
             Boolean.getBoolean("io.jenkins.plugins.kubevirt.disableNoDelayProvisioning");
 
-    private static final boolean DISABLE_CLOUD_SHUFFLE =
-            Boolean.getBoolean("NoDelayProvisionerStrategy.disableCloudShuffle");
+    @SuppressFBWarnings(value = "MS_SHOULD_BE_FINAL",
+            justification = "Mutable for runtime tuning via Jenkins script console without JVM restart")
+    public static boolean DISABLE_CLOUD_ROTATION =
+            Boolean.getBoolean("NoDelayProvisionerStrategy.disableCloudRotation")
+                    || Boolean.getBoolean("NoDelayProvisionerStrategy.disableCloudShuffle");
+
+    /** Advances the starting cloud for each provisioning attempt (multiple KubeVirt clouds). */
+    private static final AtomicInteger CLOUD_ROTATION_INDEX = new AtomicInteger();
+
+    /**
+     * Resets multi-cloud round-robin state. Intended for unit tests only.
+     */
+    static void resetCloudRotationForTesting() {
+        CLOUD_ROTATION_INDEX.set(0);
+    }
 
     @Override
     public NodeProvisioner.StrategyDecision apply(NodeProvisioner.StrategyState strategyState) {
@@ -120,8 +142,8 @@ public class NoDelayProvisionerStrategy extends NodeProvisioner.Strategy {
         // Collect all KubeVirtCloud instances
         List<KubeVirtCloud> kubeVirtClouds = new ArrayList<>();
         for (Cloud cloud : Jenkins.get().clouds) {
-            if (cloud instanceof KubeVirtCloud) {
-                kubeVirtClouds.add((KubeVirtCloud) cloud);
+            if (cloud instanceof KubeVirtCloud kubeVirtCloud) {
+                kubeVirtClouds.add(kubeVirtCloud);
             }
         }
 
@@ -130,9 +152,16 @@ public class NoDelayProvisionerStrategy extends NodeProvisioner.Strategy {
             return NodeProvisioner.StrategyDecision.CONSULT_REMAINING_STRATEGIES;
         }
 
-        // Optionally shuffle to distribute load across multiple clouds
-        if (!DISABLE_CLOUD_SHUFFLE && kubeVirtClouds.size() > 1) {
-            Collections.shuffle(kubeVirtClouds);
+        // Round-robin starting cloud (Jenkins cloud list order when rotation is disabled)
+        if (kubeVirtClouds.size() > 1 && !DISABLE_CLOUD_ROTATION) {
+            int start = Math.floorMod(CLOUD_ROTATION_INDEX.getAndIncrement(), kubeVirtClouds.size());
+            if (start > 0) {
+                List<KubeVirtCloud> rotated = new ArrayList<>(kubeVirtClouds.size());
+                for (int i = 0; i < kubeVirtClouds.size(); i++) {
+                    rotated.add(kubeVirtClouds.get((start + i) % kubeVirtClouds.size()));
+                }
+                kubeVirtClouds = rotated;
+            }
         }
 
         // Track whether any nodes were actually provisioned
@@ -242,8 +271,8 @@ public class NoDelayProvisionerStrategy extends NodeProvisioner.Strategy {
             final Label label = item.getAssignedLabel();
 
             for (Cloud cloud : jenkins.clouds) {
-                if (cloud instanceof KubeVirtCloud
-                        && cloud.canProvision(new Cloud.CloudState(label, 0))) {
+                if (cloud instanceof KubeVirtCloud kubeVirtCloud
+                        && kubeVirtCloud.canProvision(new Cloud.CloudState(label, 0))) {
                     final NodeProvisioner provisioner =
                             label == null ? jenkins.unlabeledNodeProvisioner : label.nodeProvisioner;
                     provisioner.suggestReviewNow();

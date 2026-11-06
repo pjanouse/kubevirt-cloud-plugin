@@ -32,7 +32,7 @@ import org.kohsuke.accmod.restrictions.NoExternalUse;
  * Stapler permission helpers aligned with {@link VMTemplateGroup#getManagePermission()}.
  */
 @Restricted(NoExternalUse.class)
-final class KubeVirtStaplerSecurity {
+public final class KubeVirtStaplerSecurity {
 
     private KubeVirtStaplerSecurity() {
     }
@@ -40,7 +40,7 @@ final class KubeVirtStaplerSecurity {
     /**
      * @return {@code true} if the current user can manage this plugin's cloud/template configuration
      */
-    static boolean canManage() {
+    public static boolean canManage() {
         return Jenkins.get().hasPermission(Jenkins.MANAGE);
     }
 }

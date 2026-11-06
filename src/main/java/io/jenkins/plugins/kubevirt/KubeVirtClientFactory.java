@@ -27,7 +27,6 @@ package io.jenkins.plugins.kubevirt;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
-import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import hudson.security.ACL;
 import io.jenkins.plugins.kubevirt.internal.KubeVirt;
@@ -105,14 +104,14 @@ public class KubeVirtClientFactory {
                         StringCredentials.class,
                         Jenkins.get(),
                         ACL.SYSTEM2,
-                        Collections.<DomainRequirement>emptyList()
+                        Collections.emptyList()
                 ),
                 CredentialsMatchers.withId(credentialsId)
         );
 
         if (stringCreds != null) {
             String token = stringCreds.getSecret().getPlainText();
-            if (token == null || token.trim().isEmpty()) {
+            if (token.isBlank()) {
                 LOGGER.log(Level.WARNING, "Token is empty for credentials: {0}", credentialsId);
                 return "";
             }
@@ -125,7 +124,7 @@ public class KubeVirtClientFactory {
                         StandardUsernamePasswordCredentials.class,
                         Jenkins.get(),
                         ACL.SYSTEM2,
-                        Collections.<DomainRequirement>emptyList()
+                        Collections.emptyList()
                 ),
                 CredentialsMatchers.withId(credentialsId)
         );
@@ -136,7 +135,7 @@ public class KubeVirtClientFactory {
         }
 
         String token = userPassCreds.getPassword().getPlainText();
-        if (token == null || token.trim().isEmpty()) {
+        if (token.isBlank()) {
             LOGGER.log(Level.WARNING, "Token is empty for credentials: {0}", credentialsId);
             return "";
         }

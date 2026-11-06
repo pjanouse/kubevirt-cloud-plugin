@@ -27,7 +27,6 @@ package io.jenkins.plugins.kubevirt;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardUsernameCredentials;
-import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 import hudson.security.ACL;
 import jenkins.model.Jenkins;
 
@@ -60,7 +59,7 @@ public final class SshCredentialHelper {
                         StandardUsernameCredentials.class,
                         Jenkins.get(),
                         ACL.SYSTEM2,
-                        Collections.<DomainRequirement>emptyList()
+                        Collections.emptyList()
                 ),
                 CredentialsMatchers.withId(credentialsId)
         );
