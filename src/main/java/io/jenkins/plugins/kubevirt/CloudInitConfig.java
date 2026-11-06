@@ -24,13 +24,13 @@
 
 package io.jenkins.plugins.kubevirt;
 
+import edu.umd.cs.findbugs.annotations.CheckForNull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
 import hudson.ExtensionList;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import javax.annotation.CheckForNull;
-import javax.annotation.Nonnull;
 import jenkins.model.Jenkins;
 import org.jenkinsci.Symbol;
 import org.jenkinsci.lib.configprovider.AbstractConfigProviderImpl;
@@ -113,7 +113,7 @@ public class CloudInitConfig extends Config {
         }
 
         @Override
-        public @Nonnull Config newConfig(@SuppressWarnings("null") @Nonnull String id) {
+        public @NonNull Config newConfig(@SuppressWarnings("null") @NonNull String id) {
             return new CloudInitConfig(id, "New Cloud-Init", "", getDefaultTemplate());
         }
 
@@ -163,7 +163,7 @@ public class CloudInitConfig extends Config {
          * @return Collection of "cloud-name / template-name" strings
          */
         @Restricted(DoNotUse.class) // Jelly
-        public Collection<String> usages(@Nonnull String id) {
+        public Collection<String> usages(@NonNull String id) {
             ArrayList<String> usages = new ArrayList<>();
             for (KubeVirtCloud cloud : KubeVirtCloud.getAllClouds()) {
                 for (KubeVirtTemplate template : cloud.getTemplates()) {

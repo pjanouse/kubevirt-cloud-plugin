@@ -42,7 +42,7 @@ THE SOFTWARE.
     </p>
     
     <h4>Example: Create a jenkins user with SSH key</h4>
-    <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px;">
+    <pre style="background-color: var(--card-background); color: var(--text-color); padding: 10px; border-radius: 4px;">
 #cloud-config
 # Stop sshd early to prevent premature agent connection.
 # bootcmd runs BEFORE user creation, package installation, and runcmd.
@@ -64,14 +64,14 @@ runcmd:
     </pre>
     
     <h4>Example: Configure existing default user (e.g., cloud-user, fedora)</h4>
-    <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px;">
+    <pre style="background-color: var(--card-background); color: var(--text-color); padding: 10px; border-radius: 4px;">
 #cloud-config
 ssh_authorized_keys:
   - ssh-rsa AAAAB3NzaC1yc2EAAA... your-public-key
     </pre>
     
     <h4>Example: Install packages on first boot</h4>
-    <pre style="background: #f5f5f5; padding: 10px; border-radius: 4px;">
+    <pre style="background-color: var(--card-background); color: var(--text-color); padding: 10px; border-radius: 4px;">
 #cloud-config
 # Stop sshd early to prevent premature agent connection.
 # bootcmd runs BEFORE user creation, package installation, and runcmd.
